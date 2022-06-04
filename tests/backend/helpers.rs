@@ -11,7 +11,7 @@ pub struct TestApp {
 pub async fn spawn_app(port: u16) -> TestApp {
     // Launch the application as a background task
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let filepath = format!("{}.json", random_string());
+    let filepath = format!("{}.yaml", random_string());
     create_apps_file(&filepath, &port, false);
 
     let app = Server::build(&filepath)

@@ -16,10 +16,7 @@
         }
       },
       "args": [],
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "DEBUG_MODE": "true"
-      }
+      "cwd": "${workspaceFolder}"
     },
     {
       "type": "lldb",

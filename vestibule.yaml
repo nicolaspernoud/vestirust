@@ -1,0 +1,32 @@
+---
+debug_mode: true
+main_hostname: vestibule.127.0.0.1.nip.io
+http_port: 8080
+apps:
+  - id: 1
+    name: App 1
+    icon: app_1_icon
+    color: "#010101"
+    is_proxy: true
+    host: app1.vestibule.127.0.0.1.nip.io
+    forward_to: localhost:8081
+    secured: true
+    login: admin
+    password: ff54fds6f
+    openpath: ""
+    roles:
+      - ADMINS
+      - USERS
+  - id: 2
+    name: App 2
+    icon: app_2_icon
+    color: "#020202"
+    is_proxy: false
+    host: app2.vestibule.127.0.0.1.nip.io
+    forward_to: localhost:8082
+    secured: true
+    login: admin
+    password: ff54fds6f
+    openpath: "/javascript_simple.html"
+    roles:
+      - ADMINS

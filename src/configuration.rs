@@ -36,12 +36,12 @@ pub struct Config {
 impl Config {
     pub fn from_file(filepath: &str) -> Result<Self> {
         let data = std::fs::read_to_string(filepath)?;
-        let config = serde_json::from_str::<Config>(&data)?;
+        let config = serde_yaml::from_str::<Config>(&data)?;
         Ok(config)
     }
 
     pub fn to_file(&self, filepath: &str) -> Result<()> {
-        let contents = serde_json::to_string_pretty::<Config>(self)?;
+        let contents = serde_yaml::to_string::<Config>(self)?;
         std::fs::write(filepath, contents)?;
         Ok(())
     }
@@ -117,7 +117,7 @@ mod tests {
         };
 
         // Act
-        let filepath = "config_test.json";
+        let filepath = "config_test.yaml";
         config.to_file(filepath).unwrap();
         let new_config = Config::from_file(filepath).unwrap();
 
@@ -138,11 +138,11 @@ mod tests {
             http_port: 6666,
             apps: APPS.clone(),
         };
-        let filepath = "config_test_2.json";
+        let filepath = "config_test_2.yaml";
         config.to_file(filepath).unwrap();
 
         // Act
-        let shared_config = load_config("config_test_2.json")
+        let shared_config = load_config("config_test_2.yaml")
             .await
             .expect("Failed to load configuration");
         reload_config(&shared_config)
