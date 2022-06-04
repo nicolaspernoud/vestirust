@@ -9,7 +9,10 @@ async fn main() -> Result<()> {
     let addr = SocketAddr::from(([127, 0, 0, 1], app.port));
     println!("reverse proxy listening on {}", addr);
     axum::Server::bind(&addr)
-        .serve(app.router.into_make_service())
+        .serve(
+            app.router
+                .into_make_service_with_connect_info::<SocketAddr>(),
+        )
         .await?;
     Ok(())
 }

@@ -4,10 +4,9 @@
 
 ## TODO
 
-[ ] Mock of proxied services
+[x] Mock of proxied services
 
-[ ] Reverse proxy configuration and dynamic loading
-[ ] Fix: Caller ip adress
+[x] Reverse proxy configuration and dynamic loading
 [ ] Fix: http2 downgrade
 [ ] Feat: static html
 [ ] Perfs: Configuration out of Mutex and full reloading

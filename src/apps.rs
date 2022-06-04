@@ -1,3 +1,4 @@
+use axum::extract::ConnectInfo;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 
@@ -24,7 +25,8 @@ use axum::{
 };
 
 use hyper::{client::HttpConnector, Body, StatusCode, Version};
-use std::{convert::TryFrom, net::IpAddr, sync::Arc};
+use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 type Client = hyper::client::Client<HttpConnector, Body>;
 use hyper::client::connect::dns::GaiResolver;
@@ -42,6 +44,7 @@ lazy_static::lazy_static! {
 
 pub async fn proxy_handler(
     Extension(config): Extension<Arc<Mutex<Config>>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Host(hostname): Host,
     mut req: Request<Body>,
 ) -> Response<Body> {
@@ -62,7 +65,7 @@ pub async fn proxy_handler(
 
     match PROXY_CLIENT
         .call(
-            IpAddr::try_from([127, 0, 0, 1]).unwrap(),
+            addr.ip(),
             format!("http://{}", target.forward_to).as_str(),
             req,
         )

@@ -18,7 +18,12 @@ pub async fn spawn_app(port: u16) -> TestApp {
         .await
         .expect("Could not create app");
 
-    let _ = tokio::spawn(axum::Server::bind(&addr).serve(app.router.into_make_service()));
+    let _ = tokio::spawn(
+        axum::Server::bind(&addr).serve(
+            app.router
+                .into_make_service_with_connect_info::<SocketAddr>(),
+        ),
+    );
 
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
