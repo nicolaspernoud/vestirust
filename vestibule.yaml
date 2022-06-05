@@ -1,6 +1,5 @@
 ---
 debug_mode: true
-main_hostname: vestibule.127.0.0.1.nip.io
 http_port: 8080
 apps:
   - id: 1
@@ -30,3 +29,27 @@ apps:
     openpath: "/javascript_simple.html"
     roles:
       - ADMINS
+davs:
+  - id: 1
+    host: files1.vestibule.127.0.0.1.nip.io
+    root: /data/file1
+    writable: true
+    name: Files 1
+    icon: file-invoice
+    color: "#2ce027"
+    secured: true
+    roles:
+      - ADMINS
+      - USERS
+    passphrase: ABCD123
+  - id: 2
+    host: files2.vestibule.127.0.0.1.nip.io
+    root: /data/file2
+    writable: true
+    name: Files 2
+    icon: file-invoice
+    color: "#2ce027"
+    secured: true
+    roles:
+      - USERS
+    passphrase: ""

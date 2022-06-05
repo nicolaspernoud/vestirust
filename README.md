@@ -9,7 +9,8 @@
 [x] Reverse proxy configuration and dynamic loading
 [ ] Fix: http2 downgrade
 [ ] Feat: static html
-[ ] Perfs: Configuration out of Mutex and full reloading
+[ ] Performance: Configuration out of Mutex and full reloading
+[ ] Performance: do not extract twice the apps/davs (one on main router, one on proxy handler), but add the found app to request context
 
 [ ] Let's encrypt certificates with acme-lib
 [ ] Webdav file server

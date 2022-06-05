@@ -7,7 +7,7 @@ use tower::ServiceExt;
 
 use crate::{
     apps::proxy_handler,
-    configuration::{load_config, reload_config, Config},
+    configuration::{load_config, reload_config, Config, HostType},
     mocks::mock_proxied_server,
 };
 
@@ -21,7 +21,6 @@ impl Server {
         let config = load_config(config_file).await?;
         let cfg = config.lock().await;
         let port = cfg.http_port;
-        let main_hostname = cfg.main_hostname.clone();
         if cfg.debug_mode {
             tokio::spawn(mock_proxied_server(port, 1));
             tokio::spawn(mock_proxied_server(port, 2));
@@ -42,16 +41,26 @@ impl Server {
 
         let proxy_router = Router::new().route("/*path", any(proxy_handler));
 
+        async fn webdav_handler() -> Html<String> {
+            Html(format!("This is webdav handler!"))
+        }
+        let webdav_router = Router::new().route("/*path", any(webdav_handler));
+
         let router = Router::new()
             .route(
                 "/*path",
-                any(|Host(hostname): Host, request: Request<Body>| async move {
-                    let hostname = hostname.split(":").next().unwrap();
-                    match hostname {
-                        _main if hostname == main_hostname => website_router.oneshot(request).await,
-                        _ => proxy_router.oneshot(request).await,
-                    }
-                }),
+                any(
+                    |Extension(config): Extension<Arc<Mutex<Config>>>,
+                     Host(hostname): Host,
+                     request: Request<Body>| async move {
+                        let hostname = hostname.split(":").next().unwrap();
+                        match config.lock().await.hosts_map.get(hostname) {
+                            Some(HostType::App(_)) => proxy_router.oneshot(request).await,
+                            Some(HostType::Dav(_)) => webdav_router.oneshot(request).await,
+                            None => website_router.oneshot(request).await,
+                        }
+                    },
+                ),
             )
             .layer(Extension(config));
 
