@@ -1,5 +1,5 @@
 use reqwest::Client;
-use std::{collections::HashMap, net::SocketAddr};
+use std::net::SocketAddr;
 
 use vestibule::{apps::App, configuration::Config, server::Server, utils::random_string};
 
@@ -81,8 +81,6 @@ pub fn create_apps_file(filepath: &str, port: &u16, altered: bool) {
     ];
 
     let config = Config {
-        hosts_map: HashMap::new(),
-        config_file: filepath.to_owned(),
         debug_mode: true,
         http_port: *port,
         apps: apps,

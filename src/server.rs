@@ -1,13 +1,19 @@
-use std::sync::Arc;
+use std::{convert::Infallible, sync::Arc};
 
-use axum::{extract::Host, response::Html, routing::any, Extension, Router};
+use axum::{
+    extract::Host,
+    response::Html,
+    routing::{any, any_service},
+    Extension, Router,
+};
 use hyper::{Body, Request};
-use tokio::sync::Mutex;
+
 use tower::ServiceExt;
+use webdav_handler::{localfs::LocalFs, memls::MemLs, DavHandler};
 
 use crate::{
     apps::proxy_handler,
-    configuration::{load_config, reload_config, Config, HostType},
+    configuration::{load_config, ConfigMap, HostType},
     mocks::mock_proxied_server,
 };
 
@@ -19,42 +25,47 @@ pub struct Server {
 impl Server {
     pub async fn build(config_file: &str) -> Result<Self, anyhow::Error> {
         let config = load_config(config_file).await?;
-        let cfg = config.lock().await;
-        let port = cfg.http_port;
-        if cfg.debug_mode {
+        let port = config.0.http_port;
+        if config.0.debug_mode {
             tokio::spawn(mock_proxied_server(port, 1));
             tokio::spawn(mock_proxied_server(port, 2));
         }
-        drop(cfg);
         async fn website_handler() -> Html<String> {
             Html(format!("Hello world from main server !"))
         }
-        async fn reload_handler(Extension(config): Extension<Arc<Mutex<Config>>>) -> Html<String> {
+        /*async fn reload_handler(Extension(configmap): Extension<Arc<ConfigMap>>) -> Html<String> {
             reload_config(&config)
                 .await
                 .expect("Failed to reload configuration");
             Html(format!("Apps reloaded !"))
-        }
+        }*/
         let website_router = Router::new()
-            .route("/reload", any(reload_handler))
+            //.route("/reload", any(reload_handler))
             .route("/", any(website_handler));
 
         let proxy_router = Router::new().route("/*path", any(proxy_handler));
 
-        async fn webdav_handler() -> Html<String> {
-            Html(format!("This is webdav handler!"))
-        }
-        let webdav_router = Router::new().route("/*path", any(webdav_handler));
+        let dir = "/tmp";
+        let webdav_server = DavHandler::builder()
+            .filesystem(LocalFs::new(dir, false, false, false))
+            .locksystem(MemLs::new())
+            .build_handler();
+        let webdav_service = tower::service_fn(move |req: Request<Body>| {
+            let webdav_server = webdav_server.clone();
+            async move { Ok::<_, Infallible>(webdav_server.handle(req).await) }
+        });
+
+        let webdav_router = Router::new().route("/*path", any_service(any_service(webdav_service)));
 
         let router = Router::new()
             .route(
                 "/*path",
                 any(
-                    |Extension(config): Extension<Arc<Mutex<Config>>>,
+                    |Extension(configmap): Extension<Arc<ConfigMap>>,
                      Host(hostname): Host,
                      request: Request<Body>| async move {
                         let hostname = hostname.split(":").next().unwrap();
-                        match config.lock().await.hosts_map.get(hostname) {
+                        match configmap.get(hostname) {
                             Some(HostType::App(_)) => proxy_router.oneshot(request).await,
                             Some(HostType::Dav(_)) => webdav_router.oneshot(request).await,
                             None => website_router.oneshot(request).await,
@@ -62,7 +73,7 @@ impl Server {
                     },
                 ),
             )
-            .layer(Extension(config));
+            .layer(Extension(config.1));
 
         Ok(Server {
             router: router,

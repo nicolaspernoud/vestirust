@@ -25,14 +25,15 @@ use axum::{
 };
 
 use hyper::{client::HttpConnector, Body, StatusCode, Version};
+
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 type Client = hyper::client::Client<HttpConnector, Body>;
 use hyper::client::connect::dns::GaiResolver;
 use hyper_reverse_proxy::ReverseProxy;
 
-use crate::configuration::Config;
+use crate::configuration::ConfigMap;
+use crate::configuration::HostType;
 
 lazy_static::lazy_static! {
     static ref  PROXY_CLIENT: ReverseProxy<HttpConnector<GaiResolver>> = {
@@ -43,7 +44,7 @@ lazy_static::lazy_static! {
 }
 
 pub async fn proxy_handler(
-    Extension(config): Extension<Arc<Mutex<Config>>>,
+    Extension(configmap): Extension<Arc<ConfigMap>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Host(hostname): Host,
     mut req: Request<Body>,
@@ -52,10 +53,9 @@ pub async fn proxy_handler(
     let hostname = hostname.split(":").next().unwrap();
 
     // Work out where to proxy to
-    let config = config.lock().await;
-    let target = match config.apps.iter().find(|app| app.host == hostname) {
-        Some(app) => app,
-        None => {
+    let target = match configmap.get(hostname) {
+        Some(HostType::App(app)) => app,
+        _ => {
             return Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::empty())

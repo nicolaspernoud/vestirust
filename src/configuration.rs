@@ -4,7 +4,6 @@ use std::sync::Arc;
 use anyhow::Result;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
-use tokio::sync::Mutex;
 
 use crate::apps::App;
 use crate::davs::Dav;
@@ -17,13 +16,8 @@ fn http_port() -> u16 {
     8080
 }
 
-#[derive(Deserialize, Serialize, Debug, Default)]
+#[derive(Deserialize, Serialize, Debug, Default, PartialEq)]
 pub struct Config {
-    // The config file and the hashmap are generated dynamically, and stored for future processing, but not serialized.
-    #[serde(skip)]
-    pub config_file: String,
-    #[serde(skip)]
-    pub hosts_map: HashMap<String, HostType>,
     #[serde(default = "debug_mode")]
     pub debug_mode: bool,
     #[serde(default = "http_port")]
@@ -32,12 +26,12 @@ pub struct Config {
     pub davs: Vec<Dav>,
 }
 
+pub type ConfigMap = HashMap<String, HostType>;
+
 impl Config {
     pub fn from_file(filepath: &str) -> Result<Self> {
         let data = std::fs::read_to_string(filepath)?;
-        let mut config = serde_yaml::from_str::<Config>(&data)?;
-        config.config_file = filepath.to_owned();
-        config.generate_hosts_map();
+        let config = serde_yaml::from_str::<Config>(&data)?;
         Ok(config)
     }
 
@@ -46,43 +40,31 @@ impl Config {
         std::fs::write(filepath, contents)?;
         Ok(())
     }
-
-    fn generate_hosts_map(&mut self) -> &Self {
-        self.hosts_map = self
-            .apps
-            .iter()
-            .map(|app| (app.host.to_owned(), HostType::App(app.clone())))
-            .chain(
-                self.davs
-                    .iter()
-                    .map(|dav| (dav.host.to_owned(), HostType::Dav(dav.clone()))),
-            )
-            .collect();
-        self
-    }
 }
 
-impl PartialEq for Config {
-    fn eq(&self, other: &Self) -> bool {
-        self.debug_mode == other.debug_mode
-            && self.http_port == other.http_port
-            && self.apps == other.apps
-            && self.davs == other.davs
-    }
-}
-
-pub async fn load_config(config_file: &str) -> Result<Arc<Mutex<Config>>, anyhow::Error> {
+pub async fn load_config(config_file: &str) -> Result<(Config, Arc<ConfigMap>), anyhow::Error> {
     let config = Config::from_file(config_file)?;
-    Ok(Arc::new(Mutex::new(config)))
+    let hashmap = config
+        .apps
+        .iter()
+        .map(|app| (app.host.to_owned(), HostType::App(app.clone())))
+        .chain(
+            config
+                .davs
+                .iter()
+                .map(|dav| (dav.host.to_owned(), HostType::Dav(dav.clone()))),
+        )
+        .collect();
+    Ok((config, Arc::new(hashmap)))
 }
 
-pub async fn reload_config(config: &Arc<Mutex<Config>>) -> Result<(), anyhow::Error> {
+/*pub async fn reload_config(config: &Arc<Mutex<Config>>) -> Result<(), anyhow::Error> {
     let mut config = &mut *config.lock().await;
     let config_file: String = config.config_file.clone();
     *config = Config::from_file(config_file.as_str())?;
     config.config_file = config_file.to_owned();
     Ok(())
-}
+}*/
 
 #[derive(PartialEq, Debug)]
 pub enum HostType {
@@ -92,13 +74,9 @@ pub enum HostType {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, fs};
+    use std::fs;
 
-    use crate::{
-        apps::App,
-        configuration::{load_config, reload_config, Config},
-        davs::Dav,
-    };
+    use crate::{apps::App, configuration::Config, davs::Dav};
 
     lazy_static::lazy_static! {
         static ref APPS: Vec<App> = {
@@ -168,8 +146,6 @@ mod tests {
     fn test_config_to_file_and_back() {
         // Arrange
         let config = Config {
-            hosts_map: HashMap::new(),
-            config_file: "".to_owned(),
             debug_mode: false,
             http_port: 8080,
             apps: APPS.clone(),
@@ -188,7 +164,7 @@ mod tests {
         fs::remove_file(filepath).unwrap();
     }
 
-    #[tokio::test]
+    /*#[tokio::test]
     async fn test_reload_configuration() {
         // Arrange
         let config = Config {
@@ -213,5 +189,5 @@ mod tests {
 
         // Tidy
         fs::remove_file(filepath).unwrap();
-    }
+    }*/
 }
