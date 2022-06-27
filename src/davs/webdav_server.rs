@@ -223,7 +223,8 @@ impl WebdavServer {
                     } else if is_miss {
                         status_not_found(&mut res);
                     } else {
-                        self.handle_copy(path, headers, &mut res).await?
+                        self.handle_copy(path, headers, &mut res, &dav.directory)
+                            .await?
                     }
                 }
                 "MOVE" => {
@@ -232,7 +233,8 @@ impl WebdavServer {
                     } else if is_miss {
                         status_not_found(&mut res);
                     } else {
-                        self.handle_move(path, headers, &mut res).await?
+                        self.handle_move(path, headers, &mut res, &dav.directory)
+                            .await?
                     }
                 }
                 "LOCK" => {
@@ -507,10 +509,7 @@ impl WebdavServer {
         directory: &str,
         passphrase: Option<String>,
     ) -> BoxResult<()> {
-        info!("PATH : {}/{}", directory, path.to_str().unwrap());
         let base_path = Path::new(directory);
-        let self_uri_prefix = "/";
-
         let depth: u32 = match headers.get("depth") {
             Some(v) => match v.to_str().ok().and_then(|v| v.parse().ok()) {
                 Some(v) => v,
@@ -535,14 +534,13 @@ impl WebdavServer {
                 }
             }
         }
-        let output = paths.iter().map(|v| v.to_dav_xml(self_uri_prefix)).fold(
-            String::new(),
-            |mut acc, v| {
+        let output = paths
+            .iter()
+            .map(|v| v.to_dav_xml("/"))
+            .fold(String::new(), |mut acc, v| {
                 acc.push_str(&v);
                 acc
-            },
-        );
-        info!("OUTPUT :\n{}", output);
+            });
         res_multistatus(res, &output);
         Ok(())
     }
@@ -575,8 +573,9 @@ impl WebdavServer {
         path: &Path,
         headers: &HeaderMap<HeaderValue>,
         res: &mut Response,
+        dav_path: &str,
     ) -> BoxResult<()> {
-        let dest = match self.extract_dest(headers) {
+        let dest = match self.extract_dest(headers, dav_path) {
             Some(dest) => dest,
             None => {
                 *res.status_mut() = StatusCode::BAD_REQUEST;
@@ -603,8 +602,9 @@ impl WebdavServer {
         path: &Path,
         headers: &HeaderMap<HeaderValue>,
         res: &mut Response,
+        dav_path: &str,
     ) -> BoxResult<()> {
-        let dest = match self.extract_dest(headers) {
+        let dest = match self.extract_dest(headers, dav_path) {
             Some(dest) => dest,
             None => {
                 *res.status_mut() = StatusCode::BAD_REQUEST;
@@ -669,10 +669,10 @@ impl WebdavServer {
             .unwrap_or_default()
     }
 
-    fn extract_dest(&self, headers: &HeaderMap<HeaderValue>) -> Option<PathBuf> {
+    fn extract_dest(&self, headers: &HeaderMap<HeaderValue>, dav_path: &str) -> Option<PathBuf> {
         let dest = headers.get("Destination")?.to_str().ok()?;
         let uri: Uri = dest.parse().ok()?;
-        self.extract_path(uri.path(), "")
+        self.extract_path(uri.path(), dav_path)
     }
 
     fn extract_path(&self, wanted_path: &str, dav_path: &str) -> Option<PathBuf> {
