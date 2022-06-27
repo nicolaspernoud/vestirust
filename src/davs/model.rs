@@ -1,11 +1,11 @@
-use serde_derive::Deserialize;
-use serde_derive::Serialize;
+use serde::Deserialize;
+use serde::Serialize;
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Dav {
     pub id: i64,
     pub host: String,
-    pub root: String,
+    pub directory: String,
     pub writable: bool,
     pub name: String,
     pub icon: String,

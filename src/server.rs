@@ -1,19 +1,14 @@
-use std::{convert::Infallible, sync::Arc};
+use std::sync::Arc;
 
-use axum::{
-    extract::Host,
-    response::Html,
-    routing::{any, any_service},
-    Extension, Router,
-};
+use axum::{extract::Host, response::Html, routing::any, Extension, Router};
 use hyper::{Body, Request};
 
 use tower::ServiceExt;
-use webdav_handler::{localfs::LocalFs, memls::MemLs, DavHandler};
 
 use crate::{
     apps::proxy_handler,
     configuration::{load_config, ConfigMap, HostType},
+    davs::webdav_handler,
     mocks::mock_proxied_server,
 };
 
@@ -44,18 +39,7 @@ impl Server {
             .route("/", any(website_handler));
 
         let proxy_router = Router::new().route("/*path", any(proxy_handler));
-
-        let dir = "/tmp";
-        let webdav_server = DavHandler::builder()
-            .filesystem(LocalFs::new(dir, false, false, false))
-            .locksystem(MemLs::new())
-            .build_handler();
-        let webdav_service = tower::service_fn(move |req: Request<Body>| {
-            let webdav_server = webdav_server.clone();
-            async move { Ok::<_, Infallible>(webdav_server.handle(req).await) }
-        });
-
-        let webdav_router = Router::new().route("/*path", any_service(any_service(webdav_service)));
+        let webdav_router = Router::new().route("/*path", any(webdav_handler));
 
         let router = Router::new()
             .route(

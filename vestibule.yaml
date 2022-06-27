@@ -32,7 +32,7 @@ apps:
 davs:
   - id: 1
     host: files1.vestibule.127.0.0.1.nip.io
-    root: /data/file1
+    directory: ./data/dir1
     writable: true
     name: Files 1
     icon: file-invoice
@@ -44,7 +44,7 @@ davs:
     passphrase: ABCD123
   - id: 2
     host: files2.vestibule.127.0.0.1.nip.io
-    root: /data/file2
+    directory: ./data/dir2
     writable: true
     name: Files 2
     icon: file-invoice

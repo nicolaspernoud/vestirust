@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
-use serde_derive::Deserialize;
-use serde_derive::Serialize;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::apps::App;
-use crate::davs::Dav;
+use crate::davs::model::Dav;
 
 fn debug_mode() -> bool {
     false
@@ -76,7 +76,7 @@ pub enum HostType {
 mod tests {
     use std::fs;
 
-    use crate::{apps::App, configuration::Config, davs::Dav};
+    use crate::{apps::App, configuration::Config, davs::model::Dav};
 
     lazy_static::lazy_static! {
         static ref APPS: Vec<App> = {
@@ -117,7 +117,7 @@ mod tests {
                     Dav {
                     id: 1,
                     host: "files1.vestibule.io".to_owned(),
-                    root: "/data/file1".to_owned(),
+                    directory: "/data/file1".to_owned(),
                     writable: true,
                     name: "Files 1".to_owned(),
                     icon: "file-invoice".to_owned(),
@@ -129,7 +129,7 @@ mod tests {
                 Dav {
                     id: 2,
                     host: "files2.vestibule.io".to_owned(),
-                    root: "/data/file2".to_owned(),
+                    directory: "/data/file2".to_owned(),
                     writable: true,
                     name: "Files 2".to_owned(),
                     icon: "file-invoice".to_owned(),
