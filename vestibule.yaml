@@ -41,7 +41,7 @@ davs:
     roles:
       - ADMINS
       - USERS
-    passphrase: ABCD123
+    passphrase: ""
   - id: 2
     host: files2.vestibule.127.0.0.1.nip.io
     directory: ./data/dir2
@@ -52,4 +52,4 @@ davs:
     secured: true
     roles:
       - USERS
-    passphrase: ""
+    passphrase: ABCD123

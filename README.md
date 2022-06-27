@@ -14,6 +14,10 @@
 
 [ ] Let's encrypt certificates with acme-lib
 [/] Webdav file server
+[ ] Error handling
+[ ] Remove clones, panics and unwraps
+[ ] Webdav tests : unitary and integration
+[ ] Derive key from passphrase and pass it along
 [ ] Create a webdav server for each webdav in configuration and put it into a (the ?) hashtab
 [ ] Use better maintained dav-server over dav-handler ?
 [ ] Webdav file server encryption
