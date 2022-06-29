@@ -1,46 +1,80 @@
 use reqwest::Client;
 use std::net::SocketAddr;
+use tokio::sync::broadcast;
 
-use vestibule::{apps::App, configuration::Config, server::Server, utils::random_string};
+use vestibule::{
+    apps::App, configuration::Config, mocks::mock_proxied_server, server::Server,
+    utils::random_string,
+};
 
 pub struct TestApp {
     pub client: Client,
     pub config_file: String,
+    pub server_started: tokio::sync::broadcast::Receiver<()>,
 }
 
-pub async fn spawn_app(port: u16) -> TestApp {
-    // Launch the application as a background task
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let filepath = format!("{}.yaml", random_string());
-    create_apps_file(&filepath, &port, false);
+impl TestApp {
+    pub async fn is_ready(&mut self) {
+        self.server_started
+            .recv()
+            .await
+            .expect("could not start server");
+    }
 
-    let app = Server::build(&filepath)
-        .await
-        .expect("Could not create app");
+    pub async fn spawn(port: u16) -> Self {
+        let addr = SocketAddr::from(([127, 0, 0, 1], port));
+        let filepath = format!("{}.yaml", random_string());
+        create_apps_file(&filepath, &port, false);
 
-    let _ = tokio::spawn(
-        axum::Server::bind(&addr).serve(
-            app.router
-                .into_make_service_with_connect_info::<SocketAddr>(),
-        ),
-    );
+        tokio::spawn(mock_proxied_server(port, 1));
+        tokio::spawn(mock_proxied_server(port, 2));
 
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .resolve("vestibule.io", addr)
-        .resolve("app1.vestibule.io", addr)
-        .resolve("app2.vestibule.io", addr)
-        .resolve("app2-altered.vestibule.io", addr)
-        .cookie_store(true)
-        .build()
-        .unwrap();
+        let (tx, _) = broadcast::channel(16);
+        let fp = filepath.clone();
 
-    let test_app = TestApp {
-        client: client,
-        config_file: filepath,
-    };
+        let (server_status, server_started) = broadcast::channel(16);
 
-    test_app
+        let _ = tokio::spawn(async move {
+            loop {
+                info!("Configuration read !");
+                let mut rx = tx.subscribe();
+                let app = Server::build(&fp, tx.clone())
+                    .await
+                    .expect("could not build server from configuration");
+                let addr = SocketAddr::from(([127, 0, 0, 1], app.port));
+                let server = axum::Server::bind(&addr)
+                    .serve(
+                        app.router
+                            .into_make_service_with_connect_info::<SocketAddr>(),
+                    )
+                    .with_graceful_shutdown(async move {
+                        rx.recv().await.expect("Could not receive reload command!");
+                    });
+                server_status.send(()).expect("could not send message");
+                server.await.expect("could not start server");
+            }
+        });
+
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .resolve("vestibule.io", addr)
+            .resolve("app1.vestibule.io", addr)
+            .resolve("app2.vestibule.io", addr)
+            .resolve("app2-altered.vestibule.io", addr)
+            .cookie_store(true)
+            .build()
+            .unwrap();
+
+        let mut test_app = TestApp {
+            client: client,
+            config_file: filepath,
+            server_started: server_started,
+        };
+
+        test_app.is_ready().await;
+
+        test_app
+    }
 }
 
 pub fn create_apps_file(filepath: &str, port: &u16, altered: bool) {

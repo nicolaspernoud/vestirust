@@ -1,7 +1,13 @@
 use std::sync::Arc;
 
-use axum::{extract::Host, response::Html, routing::any, Extension, Router};
+use axum::{
+    extract::Host,
+    response::Html,
+    routing::{any, get},
+    Extension, Router,
+};
 use hyper::{Body, Request};
+use tokio::sync::broadcast::Sender;
 
 use tower::ServiceExt;
 
@@ -9,7 +15,6 @@ use crate::{
     apps::proxy_handler,
     configuration::{load_config, ConfigMap, HostType},
     davs::webdav_handler,
-    mocks::mock_proxied_server,
 };
 
 pub struct Server {
@@ -18,24 +23,21 @@ pub struct Server {
 }
 
 impl Server {
-    pub async fn build(config_file: &str) -> Result<Self, anyhow::Error> {
+    pub async fn build(config_file: &str, tx: Sender<()>) -> Result<Self, anyhow::Error> {
         let config = load_config(config_file).await?;
-        let port = config.0.http_port;
-        if config.0.debug_mode {
-            tokio::spawn(mock_proxied_server(port, 1));
-            tokio::spawn(mock_proxied_server(port, 2));
-        }
+
         async fn website_handler() -> Html<String> {
             Html(format!("Hello world from main server !"))
         }
-        /*async fn reload_handler(Extension(configmap): Extension<Arc<ConfigMap>>) -> Html<String> {
-            reload_config(&config)
-                .await
-                .expect("Failed to reload configuration");
-            Html(format!("Apps reloaded !"))
-        }*/
+
         let website_router = Router::new()
-            //.route("/reload", any(reload_handler))
+            .route(
+                "/reload",
+                get(|| async move {
+                    tx.send(()).expect("Could not send reload command!");
+                    Html(format!("Apps reloaded !"))
+                }),
+            )
             .route("/", any(website_handler));
 
         let proxy_router = Router::new().route("/*path", any(proxy_handler));
@@ -61,7 +63,7 @@ impl Server {
 
         Ok(Server {
             router: router,
-            port: port,
+            port: config.0.http_port,
         })
     }
 }
