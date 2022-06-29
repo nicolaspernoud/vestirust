@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use tokio::sync::broadcast;
 
 use vestibule::{
-    apps::App, configuration::Config, mocks::mock_proxied_server, server::Server,
+    apps::App, configuration::Config, davs::model::Dav, mocks::mock_proxied_server, server::Server,
     utils::random_string,
 };
 
@@ -61,6 +61,8 @@ impl TestApp {
             .resolve("app1.vestibule.io", addr)
             .resolve("app2.vestibule.io", addr)
             .resolve("app2-altered.vestibule.io", addr)
+            .resolve("files1.vestibule.io", addr)
+            .resolve("files2.vestibule.io", addr)
             .cookie_store(true)
             .build()
             .unwrap();
@@ -114,11 +116,38 @@ pub fn create_apps_file(filepath: &str, port: &u16, altered: bool) {
         },
     ];
 
+    let davs = vec![
+        Dav {
+            id: 1,
+            host: "files1.vestibule.io".to_owned(),
+            directory: "./data/dir1".to_owned(),
+            writable: true,
+            name: "Files 1".to_owned(),
+            icon: "file-invoice".to_owned(),
+            color: "#2ce027".to_owned(),
+            secured: true,
+            roles: vec!["ADMINS".to_owned(), "USERS".to_owned()],
+            passphrase: "".to_owned(),
+        },
+        Dav {
+            id: 2,
+            host: "files2.vestibule.io".to_owned(),
+            directory: "./data/dir2".to_owned(),
+            writable: true,
+            name: "Files 2".to_owned(),
+            icon: "file-invoice".to_owned(),
+            color: "#2ce027".to_owned(),
+            secured: true,
+            roles: vec!["ADMINS".to_owned()],
+            passphrase: "ABCD123".to_owned(),
+        },
+    ];
+
     let config = Config {
         debug_mode: true,
         http_port: *port,
         apps: apps,
-        davs: vec![],
+        davs: davs,
     };
 
     // Act

@@ -12,7 +12,7 @@ use std::pin::Pin;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt};
 
-pub const PLAIN_CHUNK_SIZE: usize = 10000;
+pub const PLAIN_CHUNK_SIZE: usize = 12288;
 pub const ENCRYPTION_OVERHEAD: usize = 16;
 pub const ENCRYPTED_CHUNK_SIZE: usize = PLAIN_CHUNK_SIZE + ENCRYPTION_OVERHEAD;
 pub const NONCE_SIZE: usize = 19;
@@ -244,10 +244,10 @@ where
 
 pub fn decrypted_size(enc_size: u64) -> u64 {
     let number_of_chunks = {
-        let rhs = ENCRYPTED_CHUNK_SIZE as u64;
-        let d = enc_size / rhs;
-        let r = enc_size % rhs;
-        if r > 0 && rhs > 0 {
+        let enc_size_without_nonce = enc_size - NONCE_SIZE as u64;
+        let d = enc_size_without_nonce / ENCRYPTED_CHUNK_SIZE as u64;
+        let r = enc_size_without_nonce % ENCRYPTED_CHUNK_SIZE as u64;
+        if r > 0 {
             d + 1
         } else {
             d
@@ -261,6 +261,7 @@ pub fn encrypted_offset(dec_offset: u64) -> u64 {
     dec_offset + ENCRYPTION_OVERHEAD as u64 * number_of_chunks + NONCE_SIZE as u64
 }
 
+#[derive(PartialEq, Debug)]
 pub struct ChunkedPosition {
     pub beginning_of_active_chunk: u64,
     pub offset_in_active_chunk: u64,
@@ -281,4 +282,56 @@ impl ChunkedPosition {
             active_chunk_counter,
         }
     }
+}
+
+#[test]
+fn test_decrypted_size() {
+    let nonce_size = NONCE_SIZE as u64;
+    let encryption_overhead = ENCRYPTION_OVERHEAD as u64;
+    let encrypted_chunk_size = ENCRYPTED_CHUNK_SIZE as u64;
+    let plain_chunk_size = PLAIN_CHUNK_SIZE as u64;
+
+    assert_eq!(decrypted_size(nonce_size + encryption_overhead), 0);
+    assert_eq!(
+        decrypted_size(nonce_size + 3 * encrypted_chunk_size),
+        3 * plain_chunk_size
+    );
+    assert_eq!(
+        decrypted_size(nonce_size + 3 * encrypted_chunk_size + ENCRYPTION_OVERHEAD as u64 + 150),
+        3 * plain_chunk_size + 150
+    );
+}
+
+#[test]
+fn test_chunked_position() {
+    let nonce_size = NONCE_SIZE as u64;
+    let encrypted_chunk_size = ENCRYPTED_CHUNK_SIZE as u64;
+    let plain_chunk_size = PLAIN_CHUNK_SIZE as u64;
+
+    assert_eq!(
+        ChunkedPosition::new(0),
+        ChunkedPosition {
+            beginning_of_active_chunk: nonce_size,
+            offset_in_active_chunk: 0,
+            active_chunk_counter: 0
+        }
+    );
+
+    assert_eq!(
+        ChunkedPosition::new(100),
+        ChunkedPosition {
+            beginning_of_active_chunk: nonce_size,
+            offset_in_active_chunk: 100,
+            active_chunk_counter: 0
+        }
+    );
+
+    assert_eq!(
+        ChunkedPosition::new(100 + 2 * plain_chunk_size),
+        ChunkedPosition {
+            beginning_of_active_chunk: nonce_size + 2 * encrypted_chunk_size,
+            offset_in_active_chunk: 100,
+            active_chunk_counter: 2
+        }
+    );
 }

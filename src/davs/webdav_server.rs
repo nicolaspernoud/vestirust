@@ -473,7 +473,7 @@ impl WebdavServer {
                 } else {
                     file.seek(std::io::SeekFrom::Start(range.start)).await?;
                     let reader = Streamer::new(file, BUF_SIZE);
-                    Body::wrap_stream(reader.into_stream_sized(part_size));
+                    *res.body_mut() = Body::wrap_stream(reader.into_stream_sized(part_size));
                 }
             } else {
                 *res.status_mut() = StatusCode::RANGE_NOT_SATISFIABLE;

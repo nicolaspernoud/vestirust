@@ -15,7 +15,7 @@
 - [ ] Let's encrypt certificates with acme-lib
 - [/] Webdav file server
 - [ ] Error handling
-- [ ] Remove clones, panics and unwraps
+- [ ] Remove clones, panics, expects, unwraps, println!, etc.
 - [ ] Webdav tests : unitary and integration
 - [ ] Derive key from passphrase and pass it along
 - [x] Webdav file server encryption
@@ -24,6 +24,7 @@
 - [ ] User authentication and security (OAuth2)
 - [ ] Frontend
 - [ ] Tests
+- [ ] Use research
 
 - [x] Graceful shutdown
 - [ ] Log levels

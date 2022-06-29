@@ -1,5 +1,5 @@
 pub(crate) mod encrypted_streamer;
-pub(crate) mod model;
+pub mod model;
 pub(crate) mod streamer;
 pub(crate) mod webdav_server;
 
