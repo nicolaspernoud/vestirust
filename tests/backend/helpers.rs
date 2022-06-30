@@ -10,6 +10,7 @@ use vestibule::{
 pub struct TestApp {
     pub client: Client,
     pub config_file: String,
+    pub port: u16,
     pub server_started: tokio::sync::broadcast::Receiver<()>,
 }
 
@@ -21,13 +22,24 @@ impl TestApp {
             .expect("could not start server");
     }
 
-    pub async fn spawn(port: u16) -> Self {
-        let addr = SocketAddr::from(([127, 0, 0, 1], port));
-        let filepath = format!("{}.yaml", random_string());
-        create_apps_file(&filepath, &port, false);
+    pub async fn spawn() -> Self {
+        let main_listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("failed to bind to random port");
 
-        tokio::spawn(mock_proxied_server(port, 1));
-        tokio::spawn(mock_proxied_server(port, 2));
+        let main_addr = (&main_listener).local_addr().unwrap();
+        let main_port = main_addr.port();
+        let mock1_listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("failed to bind to random port");
+        let mock1_port = mock1_listener.local_addr().unwrap().port();
+        let mock2_listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("failed to bind to random port");
+        let mock2_port = mock2_listener.local_addr().unwrap().port();
+
+        let filepath = format!("{}.yaml", random_string());
+        create_apps_file(&filepath, &main_port, &mock1_port, &mock2_port);
+
+        tokio::spawn(mock_proxied_server(mock1_listener));
+        tokio::spawn(mock_proxied_server(mock2_listener));
 
         let (tx, _) = broadcast::channel(16);
         let fp = filepath.clone();
@@ -35,14 +47,14 @@ impl TestApp {
         let (server_status, server_started) = broadcast::channel(16);
 
         let _ = tokio::spawn(async move {
+            drop(main_listener);
             loop {
                 info!("Configuration read !");
                 let mut rx = tx.subscribe();
                 let app = Server::build(&fp, tx.clone())
                     .await
                     .expect("could not build server from configuration");
-                let addr = SocketAddr::from(([127, 0, 0, 1], app.port));
-                let server = axum::Server::bind(&addr)
+                let server = axum::Server::bind(&main_addr)
                     .serve(
                         app.router
                             .into_make_service_with_connect_info::<SocketAddr>(),
@@ -57,12 +69,12 @@ impl TestApp {
 
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
-            .resolve("vestibule.io", addr)
-            .resolve("app1.vestibule.io", addr)
-            .resolve("app2.vestibule.io", addr)
-            .resolve("app2-altered.vestibule.io", addr)
-            .resolve("files1.vestibule.io", addr)
-            .resolve("files2.vestibule.io", addr)
+            .resolve("vestibule.io", main_addr)
+            .resolve("app1.vestibule.io", main_addr)
+            .resolve("app2.vestibule.io", main_addr)
+            .resolve("app2-altered.vestibule.io", main_addr)
+            .resolve("files1.vestibule.io", main_addr)
+            .resolve("files2.vestibule.io", main_addr)
             .cookie_store(true)
             .build()
             .unwrap();
@@ -70,6 +82,7 @@ impl TestApp {
         let mut test_app = TestApp {
             client: client,
             config_file: filepath,
+            port: main_port,
             server_started: server_started,
         };
 
@@ -79,12 +92,7 @@ impl TestApp {
     }
 }
 
-pub fn create_apps_file(filepath: &str, port: &u16, altered: bool) {
-    let app2host = if altered {
-        "app2-altered.vestibule.io"
-    } else {
-        "app2.vestibule.io"
-    };
+pub fn create_apps_file(filepath: &str, main_port: &u16, mock1_port: &u16, mock2_port: &u16) {
     let apps = vec![
         App {
             id: 1,
@@ -93,7 +101,7 @@ pub fn create_apps_file(filepath: &str, port: &u16, altered: bool) {
             color: "#010101".to_owned(),
             is_proxy: true,
             host: "app1.vestibule.io".to_owned(),
-            forward_to: format!("localhost:{}", port + 1),
+            forward_to: format!("localhost:{mock1_port}"),
             secured: true,
             login: "admin".to_owned(),
             password: "ff54fds6f".to_owned(),
@@ -106,8 +114,8 @@ pub fn create_apps_file(filepath: &str, port: &u16, altered: bool) {
             icon: "app_2_icon".to_owned(),
             color: "#020202".to_owned(),
             is_proxy: false,
-            host: app2host.to_owned(),
-            forward_to: format!("localhost:{}", port + 2),
+            host: "app2.vestibule.io".to_owned(),
+            forward_to: format!("localhost:{mock2_port}"),
             secured: true,
             login: "admin".to_owned(),
             password: "ff54fds6f".to_owned(),
@@ -145,7 +153,7 @@ pub fn create_apps_file(filepath: &str, port: &u16, altered: bool) {
 
     let config = Config {
         debug_mode: true,
-        http_port: *port,
+        http_port: *main_port,
         apps: apps,
         davs: davs,
     };

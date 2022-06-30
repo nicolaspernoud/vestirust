@@ -20,8 +20,12 @@ async fn main() -> Result<()> {
     let (tx, _) = broadcast::channel(16);
     let config = vestibule::configuration::load_config(CONFIG_FILE).await?;
     if config.0.debug_mode {
-        tokio::spawn(mock_proxied_server(config.0.http_port, 1));
-        tokio::spawn(mock_proxied_server(config.0.http_port, 2));
+        let mock1_listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("failed to bind to random port");
+        tokio::spawn(mock_proxied_server(mock1_listener));
+        let mock2_listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("failed to bind to random port");
+        tokio::spawn(mock_proxied_server(mock2_listener));
     }
 
     let continue_loop = std::sync::Arc::new(tokio::sync::Mutex::new(true));

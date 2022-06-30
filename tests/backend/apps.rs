@@ -4,13 +4,12 @@ use std::fs;
 #[tokio::test]
 async fn proxy_test() {
     // Arrange
-    let port = 8080;
-    let app = TestApp::spawn(port).await;
+    let app = TestApp::spawn().await;
 
     // Act
     let response = app
         .client
-        .get(format!("http://vestibule.io:{port}"))
+        .get(format!("http://vestibule.io:{}", app.port))
         .send()
         .await
         .expect("failed to execute request");
@@ -26,7 +25,7 @@ async fn proxy_test() {
     // Act
     let response = app
         .client
-        .get(format!("http://app1.vestibule.io:{port}"))
+        .get(format!("http://app1.vestibule.io:{}", app.port))
         .send()
         .await
         .expect("failed to execute request");
@@ -37,7 +36,7 @@ async fn proxy_test() {
         .text()
         .await
         .unwrap()
-        .contains("Hello world from mock server 1"));
+        .contains("Hello world from mock server"));
 
     // Tidy
     fs::remove_file(app.config_file).ok();
@@ -46,12 +45,18 @@ async fn proxy_test() {
 #[tokio::test]
 async fn reload_test() {
     // Arrange
-    let port = 8090;
-    let mut app = TestApp::spawn(port).await;
-    create_apps_file(&app.config_file, &port, true);
+    let mut app = TestApp::spawn().await;
+    // alter the configuration file
+    let mut src = fs::File::open(&app.config_file).expect("failed to open config file");
+    let mut data = String::new();
+    std::io::Read::read_to_string(&mut src, &mut data).expect("failed to read config file");
+    drop(src);
+    let new_data = data.replace("app2.vestibule.io", "app2-altered.vestibule.io");
+    let mut dst = fs::File::create(&app.config_file).expect("could not create file");
+    std::io::Write::write(&mut dst, new_data.as_bytes()).expect("failed to write to file");
 
     app.client
-        .get(format!("http://vestibule.io:{port}/reload"))
+        .get(format!("http://vestibule.io:{}/reload", app.port))
         .send()
         .await
         .expect("failed to execute request");
@@ -61,7 +66,7 @@ async fn reload_test() {
     // Act
     let response = app
         .client
-        .get(format!("http://app2.vestibule.io:{port}"))
+        .get(format!("http://app2.vestibule.io:{}", app.port))
         .send()
         .await
         .expect("failed to execute request");
@@ -77,7 +82,7 @@ async fn reload_test() {
     // Act
     let response = app
         .client
-        .get(format!("http://app2-altered.vestibule.io:{port}"))
+        .get(format!("http://app2-altered.vestibule.io:{}", app.port))
         .send()
         .await
         .expect("failed to execute request");
@@ -88,7 +93,7 @@ async fn reload_test() {
         .text()
         .await
         .unwrap()
-        .contains("Hello world from mock server 2"));
+        .contains("Hello world from mock server"));
 
     // Tidy
     fs::remove_file(app.config_file).ok();

@@ -13,15 +13,14 @@ use sha2::{Digest, Sha512};
 
 #[tokio::test]
 async fn put_and_retrieve_tests() -> Result<()> {
-    let port = 8100;
-    let app = TestApp::spawn(port).await;
-    put_and_get_file(&app, port, "lorem.txt", "files1", false).await?;
-    put_and_get_file(&app, port, "lorem.txt", "files2", true).await?;
+    let app = TestApp::spawn().await;
+    put_and_get_file(&app, app.port, "lorem.txt", "files1", false).await?;
+    put_and_get_file(&app, app.port, "lorem.txt", "files2", true).await?;
 
     let big_file_path = "tests/data/big_file.bin";
     create_big_binary_file(big_file_path);
-    put_and_get_file(&app, port, "big_file.bin", "files1", false).await?;
-    put_and_get_file(&app, port, "big_file.bin", "files2", true).await?;
+    put_and_get_file(&app, app.port, "big_file.bin", "files1", false).await?;
+    put_and_get_file(&app, app.port, "big_file.bin", "files2", true).await?;
 
     std::fs::remove_file(&app.config_file).ok();
     std::fs::remove_file(big_file_path).ok();
@@ -125,8 +124,7 @@ fn create_big_binary_file(path: &str) {
 
 #[tokio::test]
 async fn get_correct_range() -> Result<()> {
-    let port = 8110;
-    let app = TestApp::spawn(port).await;
+    let app = TestApp::spawn().await;
 
     let cases = vec!["files1", "files2"];
 
@@ -135,7 +133,7 @@ async fn get_correct_range() -> Result<()> {
         // Act : send the file
         let resp = app
             .client
-            .put(format!("http://{case}.vestibule.io:{port}/{case}"))
+            .put(format!("http://{case}.vestibule.io:{}/{case}", app.port))
             .body(file_to_body(file))
             .send()
             .await?;
@@ -144,7 +142,7 @@ async fn get_correct_range() -> Result<()> {
         // Act : retrieve the file
         let resp = app
             .client
-            .get(format!("http://{case}.vestibule.io:{port}/{case}"))
+            .get(format!("http://{case}.vestibule.io:{}/{case}", app.port))
             .header(hyper::header::RANGE, "bytes=20000-20050")
             .send()
             .await?;
