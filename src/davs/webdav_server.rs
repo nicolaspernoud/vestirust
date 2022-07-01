@@ -1,4 +1,4 @@
-// Some of this code is freely inspired from https://github.com/sigoden/dufs
+// Some of this code is loosely inspired from https://github.com/sigoden/dufs
 /*
 The MIT License (MIT)
 
@@ -23,6 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 use log::{error, info};
+use serde_json::to_string;
 use std::borrow::Cow;
 use xml::escape::escape_str_pcdata;
 
@@ -131,7 +132,7 @@ impl WebdavServer {
         let allow_upload = dav.writable;
         let allow_delete = dav.writable;
         let allow_search = true;
-        let allow_symlink = true;
+        let allow_symlink = false;
         let passphrase = if dav.passphrase != "" {
             Some(dav.passphrase.clone())
         } else {
@@ -337,7 +338,8 @@ impl WebdavServer {
                 }
             }
         }
-        // TODO: send paths as json
+        let j = serde_json::to_string(&paths)?;
+        *res.body_mut() = Body::from(j);
         Ok(())
     }
 

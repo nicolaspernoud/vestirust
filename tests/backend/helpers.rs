@@ -1,5 +1,5 @@
 use reqwest::Client;
-use std::net::SocketAddr;
+use std::{fs, net::SocketAddr};
 use tokio::sync::broadcast;
 
 use vestibule::{
@@ -7,9 +7,11 @@ use vestibule::{
     utils::random_string,
 };
 
+use anyhow::Result;
+
 pub struct TestApp {
     pub client: Client,
-    pub config_file: String,
+    pub id: String,
     pub port: u16,
     pub server_started: tokio::sync::broadcast::Receiver<()>,
 }
@@ -23,6 +25,8 @@ impl TestApp {
     }
 
     pub async fn spawn() -> Self {
+        let id = random_string(16);
+        create_test_tree(&id).ok();
         let main_listener =
             std::net::TcpListener::bind("127.0.0.1:0").expect("failed to bind to random port");
 
@@ -35,14 +39,13 @@ impl TestApp {
             std::net::TcpListener::bind("127.0.0.1:0").expect("failed to bind to random port");
         let mock2_port = mock2_listener.local_addr().unwrap().port();
 
-        let filepath = format!("{}.yaml", random_string());
-        create_apps_file(&filepath, &main_port, &mock1_port, &mock2_port);
+        create_apps_file(&id, &main_port, &mock1_port, &mock2_port);
 
         tokio::spawn(mock_proxied_server(mock1_listener));
         tokio::spawn(mock_proxied_server(mock2_listener));
 
         let (tx, _) = broadcast::channel(16);
-        let fp = filepath.clone();
+        let fp = format!("{}.yaml", &id);
 
         let (server_status, server_started) = broadcast::channel(16);
 
@@ -81,7 +84,7 @@ impl TestApp {
 
         let mut test_app = TestApp {
             client: client,
-            config_file: filepath,
+            id: id,
             port: main_port,
             server_started: server_started,
         };
@@ -92,7 +95,15 @@ impl TestApp {
     }
 }
 
-pub fn create_apps_file(filepath: &str, main_port: &u16, mock1_port: &u16, mock2_port: &u16) {
+impl Drop for TestApp {
+    fn drop(&mut self) {
+        std::fs::remove_file(&format!("{}.yaml", self.id)).ok();
+        std::fs::remove_dir_all(&format!("./data/{}", self.id)).ok();
+    }
+}
+
+pub fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port: &u16) {
+    let filepath = format!("{}.yaml", &id);
     let apps = vec![
         App {
             id: 1,
@@ -128,7 +139,7 @@ pub fn create_apps_file(filepath: &str, main_port: &u16, mock1_port: &u16, mock2
         Dav {
             id: 1,
             host: "files1.vestibule.io".to_owned(),
-            directory: "./data/dir1".to_owned(),
+            directory: format!("./data/{id}/dir1"),
             writable: true,
             name: "Files 1".to_owned(),
             icon: "file-invoice".to_owned(),
@@ -140,7 +151,7 @@ pub fn create_apps_file(filepath: &str, main_port: &u16, mock1_port: &u16, mock2
         Dav {
             id: 2,
             host: "files2.vestibule.io".to_owned(),
-            directory: "./data/dir2".to_owned(),
+            directory: format!("./data/{id}/dir2"),
             writable: true,
             name: "Files 2".to_owned(),
             icon: "file-invoice".to_owned(),
@@ -159,5 +170,27 @@ pub fn create_apps_file(filepath: &str, main_port: &u16, mock1_port: &u16, mock2
     };
 
     // Act
-    config.to_file(filepath).unwrap();
+    config.to_file(&filepath).unwrap();
+}
+
+fn create_test_tree(base: &str) -> Result<()> {
+    for dir in vec!["dir1", "dir2"] {
+        fs::create_dir_all(format!("./data/{base}/{dir}/dira"))?;
+        fs::create_dir_all(format!("./data/{base}/{dir}/dirb"))?;
+    }
+    for dir in vec!["dira", "dirb"] {
+        for file in vec!["file1", "file2"] {
+            fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(format!("./data/{base}/dir1/{dir}/{file}"))
+                .ok();
+        }
+    }
+    Ok(())
+}
+
+pub fn encode_uri(v: &str) -> String {
+    let parts: Vec<_> = v.split('/').map(urlencoding::encode).collect();
+    parts.join("/")
 }

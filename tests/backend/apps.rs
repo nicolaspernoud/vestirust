@@ -1,4 +1,4 @@
-use crate::helpers::{create_apps_file, TestApp};
+use crate::helpers::TestApp;
 use std::fs;
 
 #[tokio::test]
@@ -37,9 +37,6 @@ async fn proxy_test() {
         .await
         .unwrap()
         .contains("Hello world from mock server"));
-
-    // Tidy
-    fs::remove_file(app.config_file).ok();
 }
 
 #[tokio::test]
@@ -47,12 +44,13 @@ async fn reload_test() {
     // Arrange
     let mut app = TestApp::spawn().await;
     // alter the configuration file
-    let mut src = fs::File::open(&app.config_file).expect("failed to open config file");
+    let fp = format!("{}.yaml", &app.id);
+    let mut src = fs::File::open(&fp).expect("failed to open config file");
     let mut data = String::new();
     std::io::Read::read_to_string(&mut src, &mut data).expect("failed to read config file");
     drop(src);
     let new_data = data.replace("app2.vestibule.io", "app2-altered.vestibule.io");
-    let mut dst = fs::File::create(&app.config_file).expect("could not create file");
+    let mut dst = fs::File::create(&fp).expect("could not create file");
     std::io::Write::write(&mut dst, new_data.as_bytes()).expect("failed to write to file");
 
     app.client
@@ -94,7 +92,4 @@ async fn reload_test() {
         .await
         .unwrap()
         .contains("Hello world from mock server"));
-
-    // Tidy
-    fs::remove_file(app.config_file).ok();
 }

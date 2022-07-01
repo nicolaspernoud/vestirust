@@ -28,3 +28,5 @@
 
 - [x] Graceful shutdown
 - [ ] Log levels
+
+- [ ] Test that is not possible to get à ".." directory
