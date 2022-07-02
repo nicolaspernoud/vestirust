@@ -45,12 +45,9 @@ pub async fn webdav_handler(
 
     match WEBDAV_SERVER.clone().call(req, addr, target).await {
         Ok(response) => response,
-        Err(_error) => {
-            eprint!("_error: {:?}", _error);
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Body::empty())
-                .unwrap()
-        }
+        Err(error) => Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(Body::empty())
+            .unwrap(),
     }
 }

@@ -132,7 +132,7 @@ impl WebdavServer {
         let allow_upload = dav.writable;
         let allow_delete = dav.writable;
         let allow_search = true;
-        let allow_symlink = false;
+        let allow_symlink = true;
         let passphrase = if dav.passphrase != "" {
             Some(dav.passphrase.clone())
         } else {
@@ -331,7 +331,7 @@ impl WebdavServer {
                     continue;
                 }
                 if let Ok(Some(item)) = self
-                    .to_pathitem(entry.path(), path.to_path_buf(), passphrase.clone())
+                    .to_pathitem(entry.path(), path.to_path_buf(), &passphrase)
                     .await
                 {
                     paths.push(item);
@@ -461,9 +461,9 @@ impl WebdavServer {
                 *res.status_mut() = StatusCode::PARTIAL_CONTENT;
                 let content_range = format!("bytes {}-{}/{}", range.start, end, decrypted_size);
                 res.headers_mut()
-                    .insert(CONTENT_RANGE, content_range.parse().unwrap());
+                    .insert(CONTENT_RANGE, content_range.parse()?);
                 res.headers_mut()
-                    .insert(CONTENT_LENGTH, format!("{}", part_size).parse().unwrap());
+                    .insert(CONTENT_LENGTH, format!("{}", part_size).parse()?);
                 if head_only {
                     return Ok(());
                 }
@@ -481,14 +481,12 @@ impl WebdavServer {
                 *res.status_mut() = StatusCode::RANGE_NOT_SATISFIABLE;
                 res.headers_mut().insert(
                     CONTENT_RANGE,
-                    format!("bytes */{}", decrypted_size).parse().unwrap(),
+                    format!("bytes */{}", decrypted_size).parse()?,
                 );
             }
         } else {
-            res.headers_mut().insert(
-                CONTENT_LENGTH,
-                format!("{}", decrypted_size).parse().unwrap(),
-            );
+            res.headers_mut()
+                .insert(CONTENT_LENGTH, format!("{}", decrypted_size).parse()?);
             if head_only {
                 return Ok(());
             }
@@ -523,12 +521,12 @@ impl WebdavServer {
             None => 1,
         };
         let mut paths = vec![self
-            .to_pathitem(path, base_path, passphrase.clone())
+            .to_pathitem(path, base_path, &passphrase)
             .await?
             .unwrap()];
         info!("Paths : {:?}", paths);
         if depth != 0 {
-            match self.list_dir(path, base_path, passphrase.clone()).await {
+            match self.list_dir(path, base_path, &passphrase).await {
                 Ok(child) => paths.extend(child),
                 Err(_) => {
                     status_forbid(res);
@@ -556,7 +554,7 @@ impl WebdavServer {
     ) -> BoxResult<()> {
         let base_path = Path::new(directory);
         let self_uri_prefix = "/";
-        if let Some(pathitem) = self.to_pathitem(path, base_path, passphrase).await? {
+        if let Some(pathitem) = self.to_pathitem(path, base_path, &passphrase).await? {
             res_multistatus(res, &pathitem.to_dav_xml(self_uri_prefix));
         } else {
             status_not_found(res);
@@ -706,14 +704,14 @@ impl WebdavServer {
         &self,
         entry_path: &Path,
         base_path: &Path,
-        passphrase: Option<String>,
+        passphrase: &Option<String>,
     ) -> BoxResult<Vec<PathItem>> {
         let mut paths: Vec<PathItem> = vec![];
         let mut rd = fs::read_dir(entry_path).await?;
         while let Ok(Some(entry)) = rd.next_entry().await {
             let entry_path = entry.path();
             if let Ok(Some(item)) = self
-                .to_pathitem(entry_path.as_path(), base_path, passphrase.clone())
+                .to_pathitem(entry_path.as_path(), base_path, &passphrase)
                 .await
             {
                 paths.push(item);
@@ -726,7 +724,7 @@ impl WebdavServer {
         &self,
         path: P,
         base_path: P,
-        passphrase: Option<String>,
+        passphrase: &Option<String>,
     ) -> BoxResult<Option<PathItem>> {
         let path = path.as_ref();
         let rel_path = path.strip_prefix(&base_path).unwrap();
@@ -753,10 +751,8 @@ impl WebdavServer {
         let mtime = to_timestamp(&meta.modified()?);
         let size = match path_type {
             PathType::Dir | PathType::SymlinkDir => None,
-            PathType::File | PathType::SymlinkFile => Some(if let Some(passphrase) = passphrase {
-                decrypted_size(meta.len().try_into().unwrap())
-                    .try_into()
-                    .unwrap()
+            PathType::File | PathType::SymlinkFile => Some(if let Some(_passphrase) = passphrase {
+                decrypted_size(meta.len().try_into()?).try_into()?
             } else {
                 meta.len()
             }),

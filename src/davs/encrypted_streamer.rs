@@ -12,7 +12,7 @@ use std::pin::Pin;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt};
 
-pub const PLAIN_CHUNK_SIZE: usize = 12288;
+pub const PLAIN_CHUNK_SIZE: usize = 1_000_000; // 1 MByte
 pub const ENCRYPTION_OVERHEAD: usize = 16;
 pub const ENCRYPTED_CHUNK_SIZE: usize = PLAIN_CHUNK_SIZE + ENCRYPTION_OVERHEAD;
 pub const NONCE_SIZE: usize = 19;
@@ -44,7 +44,7 @@ where
         let mut stream_encryptor = stream::EncryptorBE32::from_aead(aead, nonce.as_ref().into());
 
         // Write the nonce as stream header
-        self.inner.write(&nonce).await?;
+        self.inner.write_all(&nonce).await?;
         let mut total_count = 0;
 
         loop {
@@ -58,13 +58,25 @@ where
             buffer.truncate(read_count);
 
             if read_count == PLAIN_CHUNK_SIZE {
-                let ciphertext = stream_encryptor.encrypt_next(buffer.as_slice()).unwrap();
-                self.inner.write(&ciphertext).await?;
+                let ciphertext = stream_encryptor
+                    .encrypt_next(buffer.as_slice())
+                    .map_err(|e| {
+                        Error::new(
+                            ErrorKind::Other,
+                            format!("error encrypting plaintext: {}", e),
+                        )
+                    })?;
+                self.inner.write_all(&ciphertext).await?;
             } else {
                 let ciphertext = stream_encryptor
                     .encrypt_last(&buffer[..read_count])
-                    .unwrap();
-                self.inner.write(&ciphertext).await?;
+                    .map_err(|e| {
+                        Error::new(
+                            ErrorKind::Other,
+                            format!("error encrypting plaintext: {}", e),
+                        )
+                    })?;
+                self.inner.write_all(&ciphertext).await?;
                 break;
             }
         }
@@ -94,23 +106,27 @@ where
             buffer.truncate(read_count);
 
             if read_count == ENCRYPTED_CHUNK_SIZE {
-                let plaintext = match stream_decryptor.decrypt_next(buffer.as_slice()) {
-                    Ok(plaintext) => plaintext,
-                    Err(_e) => {
-                        panic!("decrypt in zip failed");
-                    }
-                };
-                writer.write(&plaintext).await?;
+                let plaintext = stream_decryptor
+                    .decrypt_next(buffer.as_slice())
+                    .map_err(|e| {
+                        Error::new(
+                            ErrorKind::Other,
+                            format!("error decrypting ciphertext: {}", e),
+                        )
+                    })?;
+                writer.write_all(&plaintext).await?;
             } else if read_count == 0 {
                 break;
             } else {
-                let plaintext = match stream_decryptor.decrypt_last(&buffer[..read_count]) {
-                    Ok(plaintext) => plaintext,
-                    Err(_e) => {
-                        panic!("decrypt in zip failed");
-                    }
-                };
-                writer.write(&plaintext).await?;
+                let plaintext = stream_decryptor
+                    .decrypt_last(&buffer[..read_count])
+                    .map_err(|e| {
+                        Error::new(
+                            ErrorKind::Other,
+                            format!("error decrypting ciphertext: {}", e),
+                        )
+                    })?;
+                writer.write_all(&plaintext).await?;
                 break;
             }
         }
@@ -188,8 +204,7 @@ where
                         .decrypt(chunked_position.active_chunk_counter as u32, false, buffer.as_slice()) {
                             Ok(plaintext) => plaintext,
                             Err(e) => {
-                                println!("Error : {}", e);
-                                yield Err(Error::new(ErrorKind::Other, format!("error decrypting plaintext: {}", e)));
+                                yield Err(Error::new(ErrorKind::Other, format!("error decrypting ciphertext: {}", e)));
                                 break;
                             }
                         };
@@ -216,7 +231,7 @@ where
                     let mut plaintext = match stream_decryptor
                     .decrypt(chunked_position.active_chunk_counter as u32, true,&buffer[..read_count]){
                             Ok(plaintext) => plaintext,
-                            Err(e) => {yield Err(Error::new(ErrorKind::Other, format!("error decrypting plaintext: {}", e)));break;}
+                            Err(e) => {yield Err(Error::new(ErrorKind::Other, format!("error decrypting ciphertext: {}", e)));break;}
                         };
 
                         if start != 0 {

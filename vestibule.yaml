@@ -7,7 +7,7 @@ apps:
     icon: app_1_icon
     color: "#010101"
     is_proxy: true
-    host: app3.vestibule.127.0.0.1.nip.io
+    host: app1.vestibule.127.0.0.1.nip.io
     forward_to: localhost:8081
     secured: true
     login: admin
