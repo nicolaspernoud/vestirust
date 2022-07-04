@@ -214,6 +214,25 @@ async fn get_file_range_limit_cases() -> Result<()> {
 }
 
 #[tokio::test]
+async fn try_to_hack() -> Result<()> {
+    let app = TestApp::spawn().await;
+    let mut dst = std::fs::File::create(format!("./data/{}/test.txt", app.id))
+        .expect("could not create file");
+    std::io::Write::write(&mut dst, b"This should not be accessible !!!")
+        .expect("failed to write to file");
+    let resp = app
+        .client
+        .get(format!(
+            "http://files1.vestibule.io:{}/../test.txt",
+            app.port
+        ))
+        .send()
+        .await?;
+    assert_eq!(resp.status(), 404);
+    Ok(())
+}
+
+#[tokio::test]
 async fn get_dir_404() -> Result<()> {
     let app = TestApp::spawn().await;
     let resp = app
