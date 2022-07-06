@@ -2,13 +2,15 @@
 debug_mode: true
 http_port: 8080
 auto_tls: false
+letsencrypt_email: foo@bar.com
+hostname: vestibule.127.0.0.1.nip.io
 apps:
   - id: 1
     name: App 1
     icon: app_1_icon
     color: "#010101"
     is_proxy: true
-    host: app1.vestibule.127.0.0.1.nip.io
+    host: app1
     forward_to: localhost:8081
     secured: true
     login: admin
@@ -22,7 +24,7 @@ apps:
     icon: app_2_icon
     color: "#020202"
     is_proxy: false
-    host: app2.vestibule.127.0.0.1.nip.io
+    host: app2
     forward_to: localhost:8082
     secured: true
     login: admin
@@ -32,7 +34,7 @@ apps:
       - ADMINS
 davs:
   - id: 1
-    host: files1.vestibule.127.0.0.1.nip.io
+    host: files1
     directory: ./data/dir1
     writable: true
     name: Files 1
@@ -44,7 +46,7 @@ davs:
       - USERS
     passphrase: ""
   - id: 2
-    host: files2.vestibule.127.0.0.1.nip.io
+    host: files2
     directory: ./data/dir2
     writable: true
     name: Files 2

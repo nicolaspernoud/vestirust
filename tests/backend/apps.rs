@@ -49,7 +49,7 @@ async fn reload_test() {
     let mut data = String::new();
     std::io::Read::read_to_string(&mut src, &mut data).expect("failed to read config file");
     drop(src);
-    let new_data = data.replace("app2.vestibule.io", "app2-altered.vestibule.io");
+    let new_data = data.replace("app2", "app2-altered");
     let mut dst = fs::File::create(&fp).expect("could not create file");
     std::io::Write::write(&mut dst, new_data.as_bytes()).expect("failed to write to file");
 

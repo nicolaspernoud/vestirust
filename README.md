@@ -32,3 +32,5 @@
 - [ ] Error handling
 - [ ] Remove clones, panics, expects, unwraps, println!, etc.
 - [ ] Tests
+
+- [ ] Use X-OC-Mtime header to alter modtime on PUT requests (nextcloud/owncloud style)

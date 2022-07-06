@@ -111,7 +111,7 @@ pub fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port:
             icon: "app_1_icon".to_owned(),
             color: "#010101".to_owned(),
             is_proxy: true,
-            host: "app1.vestibule.io".to_owned(),
+            host: "app1".to_owned(),
             forward_to: format!("localhost:{mock1_port}"),
             secured: true,
             login: "admin".to_owned(),
@@ -125,7 +125,7 @@ pub fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port:
             icon: "app_2_icon".to_owned(),
             color: "#020202".to_owned(),
             is_proxy: false,
-            host: "app2.vestibule.io".to_owned(),
+            host: "app2".to_owned(),
             forward_to: format!("localhost:{mock2_port}"),
             secured: true,
             login: "admin".to_owned(),
@@ -138,7 +138,7 @@ pub fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port:
     let davs = vec![
         Dav {
             id: 1,
-            host: "files1.vestibule.io".to_owned(),
+            host: "files1".to_owned(),
             directory: format!("./data/{id}/dir1"),
             writable: true,
             name: "Files 1".to_owned(),
@@ -150,7 +150,7 @@ pub fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port:
         },
         Dav {
             id: 2,
-            host: "files2.vestibule.io".to_owned(),
+            host: "files2".to_owned(),
             directory: format!("./data/{id}/dir2"),
             writable: true,
             name: "Files 2".to_owned(),
@@ -163,6 +163,7 @@ pub fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port:
     ];
 
     let config = Config {
+        hostname: "vestibule.io".to_owned(),
         debug_mode: true,
         auto_tls: false,
         letsencrypt_email: "foo@bar.com".to_owned(),

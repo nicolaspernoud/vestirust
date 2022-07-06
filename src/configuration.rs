@@ -20,8 +20,14 @@ fn auto_tls() -> bool {
     false
 }
 
+fn hostname() -> String {
+    "vestibule.io".to_owned()
+}
+
 #[derive(Deserialize, Serialize, Debug, Default, PartialEq)]
 pub struct Config {
+    #[serde(default = "hostname")]
+    pub hostname: String,
     #[serde(default = "debug_mode")]
     pub debug_mode: bool,
     #[serde(default = "http_port")]
@@ -54,13 +60,18 @@ pub async fn load_config(config_file: &str) -> Result<(Config, Arc<ConfigMap>), 
     let hashmap = config
         .apps
         .iter()
-        .map(|app| (app.host.to_owned(), HostType::App(app.clone())))
-        .chain(
-            config
-                .davs
-                .iter()
-                .map(|dav| (dav.host.to_owned(), HostType::Dav(dav.clone()))),
-        )
+        .map(|app| {
+            (
+                format!("{}.{}", app.host.to_owned(), config.hostname),
+                HostType::App(app.clone()),
+            )
+        })
+        .chain(config.davs.iter().map(|dav| {
+            (
+                format!("{}.{}", dav.host.to_owned(), config.hostname),
+                HostType::Dav(dav.clone()),
+            )
+        }))
         .collect();
     Ok((config, Arc::new(hashmap)))
 }
@@ -94,7 +105,7 @@ mod tests {
                     icon: "app_1_icon".to_owned(),
                     color: "#010101".to_owned(),
                     is_proxy: true,
-                    host: "app1.vestibule.io".to_owned(),
+                    host: "app1".to_owned(),
                     forward_to: "192.168.1.8".to_owned(),
                     secured: true,
                     login: "admin".to_owned(),
@@ -108,7 +119,7 @@ mod tests {
                     icon: "app_2_icon".to_owned(),
                     color: "#020202".to_owned(),
                     is_proxy: false,
-                    host: "app2.vestibule.io".to_owned(),
+                    host: "app2".to_owned(),
                     forward_to: "localhost:8081".to_owned(),
                     secured: true,
                     login: "admin".to_owned(),
@@ -123,7 +134,7 @@ mod tests {
             vec![
                     Dav {
                     id: 1,
-                    host: "files1.vestibule.io".to_owned(),
+                    host: "files1".to_owned(),
                     directory: "/data/file1".to_owned(),
                     writable: true,
                     name: "Files 1".to_owned(),
@@ -135,7 +146,7 @@ mod tests {
                 },
                 Dav {
                     id: 2,
-                    host: "files2.vestibule.io".to_owned(),
+                    host: "files2".to_owned(),
                     directory: "/data/file2".to_owned(),
                     writable: true,
                     name: "Files 2".to_owned(),
@@ -153,6 +164,7 @@ mod tests {
     fn test_config_to_file_and_back() {
         // Arrange
         let config = Config {
+            hostname: "vestibule.io".to_owned(),
             debug_mode: false,
             http_port: 8080,
             auto_tls: false,
