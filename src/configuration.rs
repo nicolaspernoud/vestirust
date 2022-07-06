@@ -16,12 +16,19 @@ fn http_port() -> u16 {
     8080
 }
 
+fn auto_tls() -> bool {
+    false
+}
+
 #[derive(Deserialize, Serialize, Debug, Default, PartialEq)]
 pub struct Config {
     #[serde(default = "debug_mode")]
     pub debug_mode: bool,
     #[serde(default = "http_port")]
     pub http_port: u16,
+    #[serde(default = "auto_tls")]
+    pub auto_tls: bool,
+    pub letsencrypt_email: String,
     pub apps: Vec<App>,
     pub davs: Vec<Dav>,
 }
@@ -148,6 +155,8 @@ mod tests {
         let config = Config {
             debug_mode: false,
             http_port: 8080,
+            auto_tls: false,
+            letsencrypt_email: "foo@bar.com".to_owned(),
             apps: APPS.clone(),
             davs: DAVS.clone(),
         };

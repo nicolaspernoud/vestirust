@@ -1,6 +1,7 @@
 ---
 debug_mode: true
 http_port: 8080
+auto_tls: false
 apps:
   - id: 1
     name: App 1

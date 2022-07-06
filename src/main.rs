@@ -1,8 +1,19 @@
-use std::net::SocketAddr;
-
 use anyhow::Result;
+use async_rustls::rustls::Session;
+use async_rustls::TlsAcceptor;
+use futures_util::future::poll_fn;
+use hyper::server::accept::Accept;
+use hyper::server::conn::{AddrIncoming, Http};
+use rustls_acme::caches::DirCache;
+use rustls_acme::AcmeConfig;
+use std::net::SocketAddr;
+use std::pin::Pin;
 use tokio::signal;
 use tokio::sync::broadcast;
+use tokio_stream::StreamExt;
+use tokio_util::compat::FuturesAsyncReadCompatExt;
+use tokio_util::compat::TokioAsyncReadCompatExt;
+use tower::MakeService;
 use vestibule::logger;
 use vestibule::mocks::mock_proxied_server;
 use vestibule::server::Server;
@@ -28,28 +39,55 @@ async fn main() -> Result<()> {
         tokio::spawn(mock_proxied_server(mock2_listener));
     }
 
-    let continue_loop = std::sync::Arc::new(tokio::sync::Mutex::new(true));
+    if config.0.auto_tls {
+        let domains: Vec<String> = config
+            .0
+            .apps
+            .iter()
+            .map(|app| app.host.clone())
+            .chain(config.0.davs.iter().map(|dav| dav.host.clone()))
+            .collect();
+        let mut state = AcmeConfig::new(domains)
+            .contact_push(format!("mailto:{}", config.0.letsencrypt_email))
+            .cache(DirCache::new("./letsencrypt_cache"))
+            .state();
+        let acceptor = state.acceptor();
 
-    loop {
-        if !(*continue_loop.lock().await) {
-            break;
-        };
-        let mut rx = tx.subscribe();
-        let app = Server::build(CONFIG_FILE, tx.clone()).await?;
-        let addr = SocketAddr::from(([127, 0, 0, 1], app.port));
-        let continue_loop = continue_loop.clone();
-        axum::Server::bind(&addr)
-            .serve(
-                app.router
-                    .into_make_service_with_connect_info::<SocketAddr>(),
-            )
-            .with_graceful_shutdown(async move {
-                tokio::select! {
-                    _ = rx.recv() => {},
-                    _ = shutdown_signal() => {*continue_loop.lock().await = false;},
+        tokio::spawn(async move {
+            loop {
+                match state.next().await.unwrap() {
+                    Ok(ok) => info!("event: {:?}", ok),
+                    Err(err) => error!("error: {:?}", err),
                 }
-            })
-            .await?;
+            }
+        });
+
+        let app = Server::build(CONFIG_FILE, tx.clone()).await?;
+
+        serve_tls(acceptor, app).await;
+    } else {
+        let continue_loop = std::sync::Arc::new(std::sync::Mutex::new(true));
+        loop {
+            let continue_loop = continue_loop.clone();
+            if !(*continue_loop.lock().unwrap()) {
+                break;
+            };
+            let mut rx = tx.subscribe();
+            let app = Server::build(CONFIG_FILE, tx.clone()).await?;
+            let addr = SocketAddr::from(([127, 0, 0, 1], app.port));
+            axum::Server::bind(&addr)
+                .serve(
+                    app.router
+                        .into_make_service_with_connect_info::<SocketAddr>(),
+                )
+                .with_graceful_shutdown(async move {
+                    tokio::select! {
+                        _ = rx.recv() => {},
+                        _ = shutdown_signal() => {*continue_loop.lock().unwrap() = false;},
+                    }
+                })
+                .await?;
+        }
     }
 
     info!("Graceful shutdown done !");
@@ -81,4 +119,33 @@ async fn shutdown_signal() {
     }
 
     println!("signal received, starting graceful shutdown");
+}
+
+async fn serve_tls(acceptor: TlsAcceptor, app: Server) {
+    let listener = tokio::net::TcpListener::bind(format!("[::]:443"))
+        .await
+        .unwrap();
+    let mut addr_incoming = AddrIncoming::from_listener(listener).unwrap();
+
+    let mut app = app
+        .router
+        .into_make_service_with_connect_info::<SocketAddr>();
+
+    loop {
+        let stream = poll_fn(|cx| Pin::new(&mut addr_incoming).poll_accept(cx))
+            .await
+            .unwrap()
+            .unwrap();
+        let acceptor = acceptor.clone();
+
+        let app = app.make_service(&stream).await.unwrap();
+
+        tokio::spawn(async move {
+            let tls = acceptor.accept(stream.compat()).await.unwrap().compat();
+            match tls.get_ref().get_ref().1.get_alpn_protocol() {
+                Some(_acme_tls_alpn_name) => info!("received TLS-ALPN-01 validation request"),
+                _ => Http::new().serve_connection(tls, app).await.unwrap(),
+            }
+        });
+    }
 }

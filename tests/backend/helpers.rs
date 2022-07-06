@@ -164,6 +164,8 @@ pub fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port:
 
     let config = Config {
         debug_mode: true,
+        auto_tls: false,
+        letsencrypt_email: "foo@bar.com".to_owned(),
         http_port: *main_port,
         apps: apps,
         davs: davs,
