@@ -46,6 +46,7 @@ async fn main() -> Result<()> {
             .unwrap();
         let mut addr_incoming = AddrIncoming::from_listener(listener).unwrap();
         loop {
+            info!("Starting Main loop");
             let continue_main_loop = continue_main_loop.clone();
             if !(*continue_main_loop.lock().unwrap()) {
                 break;
@@ -89,8 +90,9 @@ async fn main() -> Result<()> {
             let continue_inner_loop = std::sync::Arc::new(std::sync::Mutex::new(true));
 
             loop {
+                info!("Starting TLS loop");
                 let continue_inner_loop = continue_inner_loop.clone();
-                let continue_main_loop = continue_inner_loop.clone();
+                let continue_main_loop = continue_main_loop.clone();
                 if !(*continue_inner_loop.lock().unwrap()) {
                     break;
                 };
@@ -121,8 +123,8 @@ async fn main() -> Result<()> {
                                 },
                                 _ = shutdown_signal() => {
                                         info!("Shutting down...");
-                                        *continue_inner_loop.lock().unwrap() = false;
                                         *continue_main_loop.lock().unwrap() = false;
+                                        *continue_inner_loop.lock().unwrap() = false;
                                         future.as_mut().graceful_shutdown();
                                 },
                             }
