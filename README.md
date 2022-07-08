@@ -22,6 +22,8 @@
 - [ ] User authentication and security (local accounts)
 - [ ] User authentication and security (OAuth2)
 - [ ] Frontend
+- [ ] Test that decrypting with the wrong key fails
+- [ ] Refactor the oassphrase test on dav server
 
 - [ ] Use research
 

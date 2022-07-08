@@ -11,3 +11,4 @@ Cargo.lock
 
 data/dir1/**
 data/dir2/**
+letsencrypt_cache

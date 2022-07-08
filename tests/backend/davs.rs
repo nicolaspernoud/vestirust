@@ -233,6 +233,43 @@ async fn try_to_hack() -> Result<()> {
 }
 
 #[tokio::test]
+async fn try_to_use_wrong_key_to_decrypt() -> Result<()> {
+    // Arrange
+    let mut app = TestApp::spawn().await;
+
+    // Act : send a file
+    let url = format!("http://files2.vestibule.io:{}/must_have_the_key", app.port);
+    app.client
+        .put(&url)
+        .body(b"abcdefghijklmnopqrstuvwxyz".to_vec())
+        .send()
+        .await?;
+    // Act : alter the key configuration file and reload
+    let fp = format!("{}.yaml", &app.id);
+    let mut src = std::fs::File::open(&fp).expect("failed to open config file");
+    let mut data = String::new();
+    std::io::Read::read_to_string(&mut src, &mut data).expect("failed to read config file");
+    drop(src);
+    let new_data = data.replace("ABCD123", "ABCDEFG");
+    let mut dst = std::fs::File::create(&fp).expect("could not create file");
+    std::io::Write::write(&mut dst, new_data.as_bytes()).expect("failed to write to file");
+    app.client
+        .get(format!("http://vestibule.io:{}/reload", app.port))
+        .send()
+        .await
+        .expect("failed to execute request");
+
+    app.is_ready().await;
+
+    // Assert that the file cannot be retrieved
+    let resp = app.client.get(&url).send().await?;
+    assert_eq!(resp.status(), 500);
+    assert!(resp.text().await? != "abcdefghijklmnopqrstuvwxyz");
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn get_dir_404() -> Result<()> {
     let app = TestApp::spawn().await;
     let resp = app
