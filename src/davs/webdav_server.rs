@@ -131,11 +131,7 @@ impl WebdavServer {
         let allow_upload = dav.writable;
         let allow_delete = dav.writable;
         let allow_search = true;
-        let passphrase = if dav.passphrase != "" {
-            Some(dav.passphrase.clone())
-        } else {
-            None
-        };
+        let key = dav.key;
 
         if !dav.allow_symlinks
             && !is_miss
@@ -151,8 +147,7 @@ impl WebdavServer {
             Method::GET | Method::HEAD => {
                 if is_dir {
                     if query == "zip" {
-                        self.handle_zip_dir(path, head_only, &mut res, passphrase)
-                            .await?;
+                        self.handle_zip_dir(path, head_only, &mut res, key).await?;
                     } else if allow_search && query.starts_with("q=") {
                         let q = decode_uri(&query[2..]).unwrap_or_default();
                         self.handle_query_dir(
@@ -162,12 +157,12 @@ impl WebdavServer {
                             &mut res,
                             &dav.directory,
                             dav.allow_symlinks,
-                            passphrase,
+                            key,
                         )
                         .await?;
                     }
                 } else if is_file {
-                    self.handle_send_file(path, headers, head_only, &mut res, passphrase)
+                    self.handle_send_file(path, headers, head_only, &mut res, key)
                         .await?;
                 } else {
                     status_not_found(&mut res);
@@ -180,7 +175,7 @@ impl WebdavServer {
                 if !allow_upload || (!allow_delete && is_file && size > 0) {
                     status_forbid(&mut res);
                 } else {
-                    self.handle_upload(path, req, &mut res, passphrase).await?;
+                    self.handle_upload(path, req, &mut res, key).await?;
                 }
             }
             Method::DELETE => {
@@ -201,7 +196,7 @@ impl WebdavServer {
                             &mut res,
                             &dav.directory,
                             dav.allow_symlinks,
-                            passphrase,
+                            key,
                         )
                         .await?;
                     } else if is_file {
@@ -210,7 +205,7 @@ impl WebdavServer {
                             &mut res,
                             &dav.directory,
                             dav.allow_symlinks,
-                            passphrase,
+                            key,
                         )
                         .await?;
                     } else {
@@ -279,7 +274,7 @@ impl WebdavServer {
         path: &Path,
         mut req: Request,
         res: &mut Response,
-        passphrase: Option<String>,
+        key: Option<[u8; 32]>,
     ) -> BoxResult<()> {
         ensure_path_parent(path).await?;
 
@@ -299,8 +294,8 @@ impl WebdavServer {
 
         futures::pin_mut!(body_reader);
 
-        if let Some(passphrase) = &passphrase {
-            let mut enc_file = EncryptedStreamer::new(file, [0; 32]);
+        if let Some(key) = key {
+            let mut enc_file = EncryptedStreamer::new(file, key);
             enc_file.copy_from(&mut body_reader).await?;
         } else {
             io::copy(&mut body_reader, &mut file).await?;
@@ -328,7 +323,7 @@ impl WebdavServer {
         res: &mut Response,
         directory: &str,
         allow_symlinks: bool,
-        passphrase: Option<String>,
+        key: Option<[u8; 32]>,
     ) -> BoxResult<()> {
         let mut paths: Vec<PathItem> = vec![];
         let mut walkdir = WalkDir::new(path);
@@ -351,7 +346,7 @@ impl WebdavServer {
                         path.to_path_buf(),
                         directory,
                         allow_symlinks,
-                        &passphrase,
+                        &key,
                     )
                     .await
                 {
@@ -369,7 +364,7 @@ impl WebdavServer {
         path: &Path,
         head_only: bool,
         res: &mut Response,
-        passphrase: Option<String>,
+        key: Option<[u8; 32]>,
     ) -> BoxResult<()> {
         let (mut writer, reader) = tokio::io::duplex(BUF_SIZE);
         let filename = get_file_name(path)?;
@@ -388,7 +383,7 @@ impl WebdavServer {
         }
         let path = path.to_owned();
         tokio::spawn(async move {
-            if let Err(e) = zip_dir(&mut writer, &path, passphrase).await {
+            if let Err(e) = zip_dir(&mut writer, &path, key).await {
                 error!("Failed to zip {}, {}", path.display(), e);
             }
         });
@@ -403,7 +398,7 @@ impl WebdavServer {
         headers: &HeaderMap<HeaderValue>,
         head_only: bool,
         res: &mut Response,
-        passphrase: Option<String>,
+        key: Option<[u8; 32]>,
     ) -> BoxResult<()> {
         let (file, meta) = tokio::join!(fs::File::open(path), fs::metadata(path),);
         let (mut file, meta) = (file?, meta?);
@@ -462,7 +457,7 @@ impl WebdavServer {
         res.headers_mut().typed_insert(AcceptRanges::bytes());
 
         let encrypted_size = meta.len();
-        let decrypted_size = if passphrase.is_some() {
+        let decrypted_size = if key.is_some() {
             decrypted_size(encrypted_size)
         } else {
             encrypted_size
@@ -489,8 +484,8 @@ impl WebdavServer {
                     return Ok(());
                 }
 
-                if let Some(passphrase) = &passphrase {
-                    let encrypted_file = EncryptedStreamer::new(file, [0; 32]);
+                if let Some(key) = key {
+                    let encrypted_file = EncryptedStreamer::new(file, key);
                     *res.body_mut() =
                         Body::wrap_stream(encrypted_file.into_stream_sized(range.start, part_size));
                 } else {
@@ -511,8 +506,8 @@ impl WebdavServer {
             if head_only {
                 return Ok(());
             }
-            if let Some(passphrase) = &passphrase {
-                let encrypted_file = EncryptedStreamer::new(file, [0; 32]);
+            if let Some(key) = key {
+                let encrypted_file = EncryptedStreamer::new(file, key);
                 *res.body_mut() = Body::wrap_stream(encrypted_file.into_stream());
             } else {
                 let reader = Streamer::new(file, BUF_SIZE);
@@ -529,7 +524,7 @@ impl WebdavServer {
         res: &mut Response,
         directory: &str,
         allow_symlinks: bool,
-        passphrase: Option<String>,
+        key: Option<[u8; 32]>,
     ) -> BoxResult<()> {
         let base_path = Path::new(directory);
         let depth: u32 = match headers.get("depth") {
@@ -543,13 +538,13 @@ impl WebdavServer {
             None => 1,
         };
         let mut paths = vec![self
-            .to_pathitem(path, base_path, directory, allow_symlinks, &passphrase)
+            .to_pathitem(path, base_path, directory, allow_symlinks, &key)
             .await?
             .unwrap()];
         info!("Paths : {:?}", paths);
         if depth != 0 {
             match self
-                .list_dir(path, base_path, directory, allow_symlinks, &passphrase)
+                .list_dir(path, base_path, directory, allow_symlinks, &key)
                 .await
             {
                 Ok(child) => paths.extend(child),
@@ -576,12 +571,12 @@ impl WebdavServer {
         res: &mut Response,
         directory: &str,
         allow_symlinks: bool,
-        passphrase: Option<String>,
+        key: Option<[u8; 32]>,
     ) -> BoxResult<()> {
         let base_path = Path::new(directory);
         let self_uri_prefix = "/";
         if let Some(pathitem) = self
-            .to_pathitem(path, base_path, directory, allow_symlinks, &passphrase)
+            .to_pathitem(path, base_path, directory, allow_symlinks, &key)
             .await?
         {
             res_multistatus(res, &pathitem.to_dav_xml(self_uri_prefix));
@@ -691,11 +686,12 @@ impl WebdavServer {
     }
 
     async fn is_root_contained(&self, path: &Path, directory: &Path) -> bool {
-        fs::canonicalize(path)
-            .await
-            .ok()
-            .map(|v| v.starts_with(directory))
-            .unwrap_or_default()
+        let (path, dir) = tokio::join!(fs::canonicalize(path), fs::canonicalize(directory));
+        let dir = match dir {
+            Ok(dir) => dir,
+            Err(_err) => return false,
+        };
+        path.ok().map(|v| v.starts_with(dir)).unwrap_or_default()
     }
 
     fn extract_dest(&self, headers: &HeaderMap<HeaderValue>, dav_path: &str) -> Option<PathBuf> {
@@ -730,7 +726,7 @@ impl WebdavServer {
         base_path: &Path,
         directory: &str,
         allow_symlinks: bool,
-        passphrase: &Option<String>,
+        key: &Option<[u8; 32]>,
     ) -> BoxResult<Vec<PathItem>> {
         let mut paths: Vec<PathItem> = vec![];
         let mut rd = fs::read_dir(entry_path).await?;
@@ -742,7 +738,7 @@ impl WebdavServer {
                     base_path,
                     directory,
                     allow_symlinks,
-                    &passphrase,
+                    &key,
                 )
                 .await
             {
@@ -758,7 +754,7 @@ impl WebdavServer {
         base_path: P,
         directory: &str,
         allow_symlinks: bool,
-        passphrase: &Option<String>,
+        key: &Option<[u8; 32]>,
     ) -> BoxResult<Option<PathItem>> {
         let path = path.as_ref();
         let rel_path = path.strip_prefix(&base_path).unwrap();
@@ -781,7 +777,7 @@ impl WebdavServer {
         let mtime = to_timestamp(&meta.modified()?);
         let size = match path_type {
             PathType::Dir | PathType::SymlinkDir => None,
-            PathType::File | PathType::SymlinkFile => Some(if let Some(_passphrase) = passphrase {
+            PathType::File | PathType::SymlinkFile => Some(if let Some(_key) = key {
                 decrypted_size(meta.len().try_into()?).try_into()?
             } else {
                 meta.len()
@@ -921,7 +917,7 @@ fn res_multistatus(res: &mut Response, content: &str) {
 async fn zip_dir<W: AsyncWrite + Unpin>(
     writer: &mut W,
     dir: &Path,
-    passphrase: Option<String>,
+    key: Option<[u8; 32]>,
 ) -> BoxResult<()> {
     let mut writer = ZipFileWriter::new(writer);
     let mut walkdir = WalkDir::new(dir);
@@ -943,8 +939,8 @@ async fn zip_dir<W: AsyncWrite + Unpin>(
             let mut file = File::open(&entry_path).await?;
             let mut file_writer = writer.write_entry_stream(entry_options).await?;
 
-            if let Some(passphrase) = &passphrase {
-                let encrypted_file = EncryptedStreamer::new(file, [0; 32]);
+            if let Some(key) = key {
+                let encrypted_file = EncryptedStreamer::new(file, key);
                 encrypted_file.copy_to(&mut file_writer).await?;
             } else {
                 io::copy(&mut file, &mut file_writer).await?;

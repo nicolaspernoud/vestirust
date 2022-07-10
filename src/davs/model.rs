@@ -15,4 +15,6 @@ pub struct Dav {
     pub allow_symlinks: bool,
     pub roles: Vec<String>,
     pub passphrase: String,
+    #[serde(skip)]
+    pub key: Option<[u8; 32]>,
 }

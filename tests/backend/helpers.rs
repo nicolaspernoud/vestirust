@@ -78,6 +78,7 @@ impl TestApp {
             .resolve("app2-altered.vestibule.io", main_addr)
             .resolve("files1.vestibule.io", main_addr)
             .resolve("files2.vestibule.io", main_addr)
+            .resolve("files3.vestibule.io", main_addr)
             .cookie_store(true)
             .build()
             .unwrap();
@@ -148,6 +149,7 @@ pub fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port:
             allow_symlinks: false,
             roles: vec!["ADMINS".to_owned(), "USERS".to_owned()],
             passphrase: "".to_owned(),
+            key: None,
         },
         Dav {
             id: 2,
@@ -161,6 +163,21 @@ pub fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port:
             allow_symlinks: true,
             roles: vec!["ADMINS".to_owned()],
             passphrase: "ABCD123".to_owned(),
+            key: None,
+        },
+        Dav {
+            id: 3,
+            host: "files3".to_owned(),
+            directory: format!("./data/{id}/dir3"),
+            writable: true,
+            name: "Files 3".to_owned(),
+            icon: "file-invoice".to_owned(),
+            color: "#2ce027".to_owned(),
+            secured: true,
+            allow_symlinks: true,
+            roles: vec!["ADMINS".to_owned(), "USERS".to_owned()],
+            passphrase: "".to_owned(),
+            key: None,
         },
     ];
 
@@ -179,7 +196,7 @@ pub fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port:
 }
 
 fn create_test_tree(base: &str) -> Result<()> {
-    for dir in vec!["dir1", "dir2"] {
+    for dir in vec!["dir1", "dir2", "dir3"] {
         fs::create_dir_all(format!("./data/{base}/{dir}/dira"))?;
         fs::create_dir_all(format!("./data/{base}/{dir}/dirb"))?;
     }

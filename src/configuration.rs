@@ -7,6 +7,7 @@ use serde::Serialize;
 
 use crate::apps::App;
 use crate::davs::model::Dav;
+use sha2::{Digest, Sha256};
 
 fn debug_mode() -> bool {
     false
@@ -67,22 +68,21 @@ pub async fn load_config(config_file: &str) -> Result<(Config, Arc<ConfigMap>), 
             )
         })
         .chain(config.davs.iter().map(|dav| {
+            let mut dav = dav.clone();
+            if dav.passphrase != "" {
+                let mut hasher = Sha256::new();
+                hasher.update(&dav.passphrase);
+                let result: [u8; 32] = hasher.finalize().into();
+                dav.key = Some(result);
+            }
             (
                 format!("{}.{}", dav.host.to_owned(), config.hostname),
-                HostType::Dav(dav.clone()),
+                HostType::Dav(dav),
             )
         }))
         .collect();
     Ok((config, Arc::new(hashmap)))
 }
-
-/*pub async fn reload_config(config: &Arc<Mutex<Config>>) -> Result<(), anyhow::Error> {
-    let mut config = &mut *config.lock().await;
-    let config_file: String = config.config_file.clone();
-    *config = Config::from_file(config_file.as_str())?;
-    config.config_file = config_file.to_owned();
-    Ok(())
-}*/
 
 #[derive(PartialEq, Debug)]
 pub enum HostType {
@@ -143,7 +143,8 @@ mod tests {
                     secured: true,
                     allow_symlinks: false,
                     roles: vec!["ADMINS".to_owned(),"USERS".to_owned()],
-                    passphrase: "ABCD123".to_owned()
+                    passphrase: "ABCD123".to_owned(),
+                    key: None
                 },
                 Dav {
                     id: 2,
@@ -156,7 +157,8 @@ mod tests {
                     secured: true,
                     allow_symlinks: true,
                     roles: vec!["USERS".to_owned()],
-                    passphrase: "".to_owned()
+                    passphrase: "".to_owned(),
+                    key: None
                 },
             ]
         };
@@ -186,31 +188,4 @@ mod tests {
         // Tidy
         fs::remove_file(filepath).unwrap();
     }
-
-    /*#[tokio::test]
-    async fn test_reload_configuration() {
-        // Arrange
-        let config = Config {
-            hosts_map: HashMap::new(),
-            config_file: "".to_owned(),
-            debug_mode: false,
-            http_port: 6666,
-            apps: APPS.clone(),
-            davs: DAVS.clone(),
-        };
-        let filepath = "config_test_2.yaml";
-        config.to_file(filepath).unwrap();
-
-        // Act
-        let shared_config = load_config("config_test_2.yaml")
-            .await
-            .expect("Failed to load configuration");
-        reload_config(&shared_config)
-            .await
-            .expect("Failed to reload configuration");
-        assert_eq!(shared_config.lock().await.http_port, 6666);
-
-        // Tidy
-        fs::remove_file(filepath).unwrap();
-    }*/
 }

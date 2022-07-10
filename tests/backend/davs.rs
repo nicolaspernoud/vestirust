@@ -263,8 +263,7 @@ async fn try_to_use_wrong_key_to_decrypt() -> Result<()> {
 
     // Assert that the file cannot be retrieved
     let resp = app.client.get(&url).send().await?;
-    assert_eq!(resp.status(), 500);
-    assert!(resp.text().await? != "abcdefghijklmnopqrstuvwxyz");
+    assert!(resp.bytes().await.is_err());
 
     Ok(())
 }
@@ -765,8 +764,13 @@ use std::os::windows::fs::symlink_dir;
 #[tokio::test]
 async fn default_not_allow_symlinks() -> Result<()> {
     let app = TestApp::spawn().await;
+    std::fs::create_dir_all(format!("./data/{}/dir_symlink", app.id))?;
+    std::fs::write(
+        format!("./data/{}/dir_symlink/file1", app.id),
+        b"Lorem ipsum",
+    )?;
     let srcdir = std::fs::canonicalize(std::path::PathBuf::from(format!(
-        "./data/{}/dir1/dira",
+        "./data/{}/dir_symlink",
         app.id
     )))
     .expect("couldn't canonicalize path");
@@ -792,28 +796,27 @@ async fn default_not_allow_symlinks() -> Result<()> {
 #[tokio::test]
 async fn allow_symlinks() -> Result<()> {
     let app = TestApp::spawn().await;
-    let url = format!("http://files2.vestibule.io:{}/dira/file1", app.port);
-    app.client
-        .put(&url)
-        .body(b"abcdefghijklmnopqrstuvwxyz".to_vec())
-        .send()
-        .await?;
+    std::fs::create_dir_all(format!("./data/{}/dir_symlink", app.id))?;
+    std::fs::write(
+        format!("./data/{}/dir_symlink/file1", app.id),
+        b"Lorem ipsum",
+    )?;
     let srcdir = std::fs::canonicalize(std::path::PathBuf::from(format!(
-        "./data/{}/dir2/dira",
+        "./data/{}/dir_symlink",
         app.id
     )))
     .expect("couldn't canonicalize path");
-    symlink_dir(srcdir, format!("./data/{}/dir2/dirc", app.id)).expect("couldn't create symlink");
+    symlink_dir(srcdir, format!("./data/{}/dir3/dirc", app.id)).expect("couldn't create symlink");
     let resp = app
         .client
-        .get(format!("http://files2.vestibule.io:{}/dirc", app.port))
+        .get(format!("http://files3.vestibule.io:{}/dirc", app.port))
         .send()
         .await?;
     assert_eq!(resp.status(), 200);
     let resp = app
         .client
         .get(format!(
-            "http://files2.vestibule.io:{}/dirc/file1",
+            "http://files3.vestibule.io:{}/dirc/file1",
             app.port
         ))
         .send()
