@@ -763,7 +763,7 @@ use std::os::unix::fs::symlink as symlink_dir;
 use std::os::windows::fs::symlink_dir;
 
 #[tokio::test]
-async fn default_not_allow_symlink() -> Result<()> {
+async fn default_not_allow_symlinks() -> Result<()> {
     let app = TestApp::spawn().await;
     let srcdir = std::fs::canonicalize(std::path::PathBuf::from(format!(
         "./data/{}/dir1/dira",
@@ -789,29 +789,35 @@ async fn default_not_allow_symlink() -> Result<()> {
     Ok(())
 }
 
-/*#[tokio::test]
-async fn allow_symlink() -> Result<()> {
+#[tokio::test]
+async fn allow_symlinks() -> Result<()> {
     let app = TestApp::spawn().await;
+    let url = format!("http://files2.vestibule.io:{}/dira/file1", app.port);
+    app.client
+        .put(&url)
+        .body(b"abcdefghijklmnopqrstuvwxyz".to_vec())
+        .send()
+        .await?;
     let srcdir = std::fs::canonicalize(std::path::PathBuf::from(format!(
-        "./data/{}/dir1/dira",
+        "./data/{}/dir2/dira",
         app.id
     )))
-    .unwrap();
-    symlink_dir(srcdir, format!("./data/{}/dir1/dirc", app.id)).expect("couldn't create symlink");
+    .expect("couldn't canonicalize path");
+    symlink_dir(srcdir, format!("./data/{}/dir2/dirc", app.id)).expect("couldn't create symlink");
     let resp = app
         .client
-        .get(format!("http://files1.vestibule.io:{}/dirc", app.port))
+        .get(format!("http://files2.vestibule.io:{}/dirc", app.port))
         .send()
         .await?;
     assert_eq!(resp.status(), 200);
     let resp = app
         .client
         .get(format!(
-            "http://files1.vestibule.io:{}/dirc/file1",
+            "http://files2.vestibule.io:{}/dirc/file1",
             app.port
         ))
         .send()
         .await?;
     assert_eq!(resp.status(), 200);
     Ok(())
-}*/
+}

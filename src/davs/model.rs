@@ -11,6 +11,8 @@ pub struct Dav {
     pub icon: String,
     pub color: String,
     pub secured: bool,
+    #[serde(default)]
+    pub allow_symlinks: bool,
     pub roles: Vec<String>,
     pub passphrase: String,
 }

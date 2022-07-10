@@ -36,3 +36,4 @@
 - [ ] Tests
 
 - [ ] Use X-OC-Mtime header to alter modtime on PUT requests (nextcloud/owncloud style)
+- [ ] Check that trying to PUT/MOVE/COPY on existing file/dir gives an error

@@ -141,6 +141,7 @@ mod tests {
                     icon: "file-invoice".to_owned(),
                     color: "#2ce027".to_owned(),
                     secured: true,
+                    allow_symlinks: false,
                     roles: vec!["ADMINS".to_owned(),"USERS".to_owned()],
                     passphrase: "ABCD123".to_owned()
                 },
@@ -153,6 +154,7 @@ mod tests {
                     icon: "file-invoice".to_owned(),
                     color: "#2ce027".to_owned(),
                     secured: true,
+                    allow_symlinks: true,
                     roles: vec!["USERS".to_owned()],
                     passphrase: "".to_owned()
                 },

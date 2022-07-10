@@ -23,7 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 use log::{error, info};
-use serde_json::to_string;
 use std::borrow::Cow;
 use xml::escape::escape_str_pcdata;
 
@@ -132,14 +131,13 @@ impl WebdavServer {
         let allow_upload = dav.writable;
         let allow_delete = dav.writable;
         let allow_search = true;
-        let allow_symlink = true;
         let passphrase = if dav.passphrase != "" {
             Some(dav.passphrase.clone())
         } else {
             None
         };
 
-        if !allow_symlink
+        if !dav.allow_symlinks
             && !is_miss
             && !self
                 .is_root_contained(path, Path::new(&dav.directory))
@@ -157,8 +155,16 @@ impl WebdavServer {
                             .await?;
                     } else if allow_search && query.starts_with("q=") {
                         let q = decode_uri(&query[2..]).unwrap_or_default();
-                        self.handle_query_dir(path, &q, head_only, &mut res, passphrase)
-                            .await?;
+                        self.handle_query_dir(
+                            path,
+                            &q,
+                            head_only,
+                            &mut res,
+                            &dav.directory,
+                            dav.allow_symlinks,
+                            passphrase,
+                        )
+                        .await?;
                     }
                 } else if is_file {
                     self.handle_send_file(path, headers, head_only, &mut res, passphrase)
@@ -194,12 +200,19 @@ impl WebdavServer {
                             headers,
                             &mut res,
                             &dav.directory,
+                            dav.allow_symlinks,
                             passphrase,
                         )
                         .await?;
                     } else if is_file {
-                        self.handle_propfind_file(path, &mut res, &dav.directory, passphrase)
-                            .await?;
+                        self.handle_propfind_file(
+                            path,
+                            &mut res,
+                            &dav.directory,
+                            dav.allow_symlinks,
+                            passphrase,
+                        )
+                        .await?;
                     } else {
                         status_not_found(&mut res);
                     }
@@ -313,6 +326,8 @@ impl WebdavServer {
         query: &str,
         head_only: bool,
         res: &mut Response,
+        directory: &str,
+        allow_symlinks: bool,
         passphrase: Option<String>,
     ) -> BoxResult<()> {
         let mut paths: Vec<PathItem> = vec![];
@@ -331,7 +346,13 @@ impl WebdavServer {
                     continue;
                 }
                 if let Ok(Some(item)) = self
-                    .to_pathitem(entry.path(), path.to_path_buf(), &passphrase)
+                    .to_pathitem(
+                        entry.path(),
+                        path.to_path_buf(),
+                        directory,
+                        allow_symlinks,
+                        &passphrase,
+                    )
                     .await
                 {
                     paths.push(item);
@@ -507,6 +528,7 @@ impl WebdavServer {
         headers: &HeaderMap<HeaderValue>,
         res: &mut Response,
         directory: &str,
+        allow_symlinks: bool,
         passphrase: Option<String>,
     ) -> BoxResult<()> {
         let base_path = Path::new(directory);
@@ -521,12 +543,15 @@ impl WebdavServer {
             None => 1,
         };
         let mut paths = vec![self
-            .to_pathitem(path, base_path, &passphrase)
+            .to_pathitem(path, base_path, directory, allow_symlinks, &passphrase)
             .await?
             .unwrap()];
         info!("Paths : {:?}", paths);
         if depth != 0 {
-            match self.list_dir(path, base_path, &passphrase).await {
+            match self
+                .list_dir(path, base_path, directory, allow_symlinks, &passphrase)
+                .await
+            {
                 Ok(child) => paths.extend(child),
                 Err(_) => {
                     status_forbid(res);
@@ -550,11 +575,15 @@ impl WebdavServer {
         path: &Path,
         res: &mut Response,
         directory: &str,
+        allow_symlinks: bool,
         passphrase: Option<String>,
     ) -> BoxResult<()> {
         let base_path = Path::new(directory);
         let self_uri_prefix = "/";
-        if let Some(pathitem) = self.to_pathitem(path, base_path, &passphrase).await? {
+        if let Some(pathitem) = self
+            .to_pathitem(path, base_path, directory, allow_symlinks, &passphrase)
+            .await?
+        {
             res_multistatus(res, &pathitem.to_dav_xml(self_uri_prefix));
         } else {
             status_not_found(res);
@@ -692,11 +721,6 @@ impl WebdavServer {
 
     fn strip_path_prefix<'a, P: AsRef<Path>>(&self, path: &'a P) -> Option<&'a Path> {
         let path = path.as_ref();
-        /*if self.path_prefix.is_empty() {
-            Some(path)
-        } else {
-            path.strip_prefix(&self.path_prefix).ok()
-        }*/
         Some(path)
     }
 
@@ -704,6 +728,8 @@ impl WebdavServer {
         &self,
         entry_path: &Path,
         base_path: &Path,
+        directory: &str,
+        allow_symlinks: bool,
         passphrase: &Option<String>,
     ) -> BoxResult<Vec<PathItem>> {
         let mut paths: Vec<PathItem> = vec![];
@@ -711,7 +737,13 @@ impl WebdavServer {
         while let Ok(Some(entry)) = rd.next_entry().await {
             let entry_path = entry.path();
             if let Ok(Some(item)) = self
-                .to_pathitem(entry_path.as_path(), base_path, &passphrase)
+                .to_pathitem(
+                    entry_path.as_path(),
+                    base_path,
+                    directory,
+                    allow_symlinks,
+                    &passphrase,
+                )
                 .await
             {
                 paths.push(item);
@@ -724,6 +756,8 @@ impl WebdavServer {
         &self,
         path: P,
         base_path: P,
+        directory: &str,
+        allow_symlinks: bool,
         passphrase: &Option<String>,
     ) -> BoxResult<Option<PathItem>> {
         let path = path.as_ref();
@@ -731,13 +765,9 @@ impl WebdavServer {
         let (meta, meta2) = tokio::join!(fs::metadata(&path), fs::symlink_metadata(&path));
         let (meta, meta2) = (meta?, meta2?);
         let is_symlink = meta2.is_symlink();
-        let allow_symlink = true;
-        // TODO
-        if !allow_symlink
+        if !allow_symlinks
             && is_symlink
-            && !self
-                .is_root_contained(path, Path::new(base_path.as_ref()))
-                .await
+            && !self.is_root_contained(path, Path::new(directory)).await
         {
             return Ok(None);
         }
