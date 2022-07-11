@@ -169,7 +169,7 @@ pub fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port:
             id: 3,
             host: "files3".to_owned(),
             directory: format!("./data/{id}/dir3"),
-            writable: true,
+            writable: false,
             name: "Files 3".to_owned(),
             icon: "file-invoice".to_owned(),
             color: "#2ce027".to_owned(),
@@ -206,6 +206,11 @@ fn create_test_tree(base: &str) -> Result<()> {
                 .write(true)
                 .create_new(true)
                 .open(format!("./data/{base}/dir1/{dir}/{file}"))
+                .ok();
+            fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(format!("./data/{base}/dir3/{dir}/{file}"))
                 .ok();
         }
     }

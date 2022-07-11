@@ -416,6 +416,17 @@ async fn put_file() -> Result<()> {
 }
 
 #[tokio::test]
+async fn put_file_not_writable() -> Result<()> {
+    let app = TestApp::spawn().await;
+    let url = format!("http://files3.vestibule.io:{}/myfile", app.port);
+    let resp = app.client.put(&url).body(b"abc".to_vec()).send().await?;
+    assert_eq!(resp.status(), 403);
+    let resp = app.client.get(url).send().await?;
+    assert_eq!(resp.status(), 404);
+    Ok(())
+}
+
+#[tokio::test]
 async fn put_file_create_dir() -> Result<()> {
     let app = TestApp::spawn().await;
     let url = format!(
@@ -624,12 +635,14 @@ async fn mkcol_dir() -> Result<()> {
     Ok(())
 }
 
-/*#[tokio::test]
-async fn mkcol_not_allow_upload() -> Result<()> {
-    let resp = fetch!(b"MKCOL", format!("{}newdir", server.url())).send()?;
+#[tokio::test]
+async fn mkcol_not_writable() -> Result<()> {
+    let app = TestApp::spawn().await;
+    let url = format!("http://files3.vestibule.io:{}/newdir", app.port);
+    let resp = mkcol(&app, &url).send().await?;
     assert_eq!(resp.status(), 403);
     Ok(())
-}*/
+}
 
 #[tokio::test]
 async fn copy_file() -> Result<()> {
@@ -649,15 +662,23 @@ async fn copy_file() -> Result<()> {
     Ok(())
 }
 
-/*#[tokio::test]
-async fn copy_not_allow_upload() -> Result<()> {
-    let new_url = format!("{}test2.html", server.url());
-    let resp = fetch!(b"COPY", format!("{}test.html", server.url()))
+#[tokio::test]
+async fn copy_not_writable() -> Result<()> {
+    let app = TestApp::spawn().await;
+    let url = format!("http://files3.vestibule.io:{}/dira/file1", app.port);
+    let new_url = format!(
+        "http://files3.vestibule.io:{}/dira/file1%20(copy)",
+        app.port
+    );
+    let resp = copy(&app, &url)
         .header("Destination", &new_url)
-        .send()?;
+        .send()
+        .await?;
     assert_eq!(resp.status(), 403);
+    let resp = app.client.get(new_url).send().await?;
+    assert_eq!(resp.status(), 404);
     Ok(())
-}*/
+}
 
 #[tokio::test]
 async fn copy_file_404() -> Result<()> {
@@ -695,18 +716,25 @@ async fn move_file() -> Result<()> {
     Ok(())
 }
 
-/*#[tokio::test]
-async fn move_not_allow_upload(
-    #[with(&["--allow-delete"])] ,
-) -> Result<()> {
-    let origin_url = format!("{}test.html", server.url());
-    let new_url = format!("{}test2.html", server.url());
-    let resp = fetch!(b"MOVE", &origin_url)
+#[tokio::test]
+async fn move_file_not_writable() -> Result<()> {
+    let app = TestApp::spawn().await;
+    let origin_url = format!("http://files3.vestibule.io:{}/dira/file2", app.port);
+    let new_url = format!(
+        "http://files3.vestibule.io:{}/dira/file2%20(moved)",
+        app.port
+    );
+    let resp = mv(&app, &origin_url)
         .header("Destination", &new_url)
-        .send()?;
+        .send()
+        .await?;
     assert_eq!(resp.status(), 403);
+    let resp = app.client.get(new_url).send().await?;
+    assert_eq!(resp.status(), 404);
+    let resp = app.client.get(origin_url).send().await?;
+    assert_eq!(resp.status(), 200);
     Ok(())
-}*/
+}
 
 #[tokio::test]
 async fn move_file_404() -> Result<()> {
