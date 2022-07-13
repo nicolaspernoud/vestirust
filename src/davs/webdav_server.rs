@@ -102,7 +102,7 @@ impl WebdavServer {
         Ok(res)
     }
 
-    pub async fn handle(self: Arc<Self>, req: Request, dav: &Dav) -> BoxResult<Response> {
+    pub async fn handle(self: Arc<Self>, mut req: Request, dav: &Dav) -> BoxResult<Response> {
         let mut res = Response::default();
 
         let req_path = req.uri().path();
@@ -153,7 +153,6 @@ impl WebdavServer {
                         self.handle_query_dir(
                             path,
                             &q,
-                            head_only,
                             &mut res,
                             &dav.directory,
                             dav.allow_symlinks,
@@ -220,8 +219,13 @@ impl WebdavServer {
                     }
                 }
                 "MKCOL" => {
-                    if !allow_upload || !is_miss {
+                    if !allow_upload {
                         status_forbid(&mut res);
+                    } else if !is_miss {
+                        status_method_not_allowed(&mut res);
+                    } else if !axum::body::HttpBody::data(&mut req).await.is_none() {
+                        *res.status_mut() = StatusCode::UNSUPPORTED_MEDIA_TYPE;
+                        *res.body_mut() = Body::from("Unsupported Media Type");
                     } else {
                         self.handle_mkcol(path, &mut res).await?;
                     }
@@ -262,7 +266,7 @@ impl WebdavServer {
                     }
                 }
                 _ => {
-                    *res.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
+                    status_method_not_allowed(&mut res);
                 }
             },
         }
@@ -319,7 +323,6 @@ impl WebdavServer {
         &self,
         path: &Path,
         query: &str,
-        head_only: bool,
         res: &mut Response,
         directory: &str,
         allow_symlinks: bool,
@@ -587,9 +590,16 @@ impl WebdavServer {
     }
 
     async fn handle_mkcol(&self, path: &Path, res: &mut Response) -> BoxResult<()> {
-        fs::create_dir_all(path).await?;
-        *res.status_mut() = StatusCode::CREATED;
-        Ok(())
+        match fs::create_dir(path).await {
+            Ok(_) => {
+                *res.status_mut() = StatusCode::CREATED;
+                Ok(())
+            }
+            Err(_) => {
+                *res.status_mut() = StatusCode::CONFLICT;
+                Ok(())
+            }
+        }
     }
 
     async fn handle_copy(
@@ -607,17 +617,16 @@ impl WebdavServer {
             }
         };
 
-        let meta = fs::symlink_metadata(path).await?;
-        if meta.is_dir() {
-            status_forbid(res);
-            return Ok(());
+        if let Some(parent) = dest.parent() {
+            if fs::symlink_metadata(parent).await.is_err() {
+                *res.status_mut() = StatusCode::CONFLICT;
+                return Ok(());
+            }
         }
-
-        ensure_path_parent(&dest).await?;
 
         fs::copy(path, &dest).await?;
 
-        status_no_content(res);
+        *res.status_mut() = StatusCode::CREATED;
         Ok(())
     }
 
@@ -640,7 +649,7 @@ impl WebdavServer {
 
         fs::rename(path, &dest).await?;
 
-        status_no_content(res);
+        *res.status_mut() = StatusCode::CREATED;
         Ok(())
     }
 
@@ -1006,6 +1015,11 @@ fn status_not_found(res: &mut Response) {
 
 fn status_no_content(res: &mut Response) {
     *res.status_mut() = StatusCode::NO_CONTENT;
+}
+
+fn status_method_not_allowed(res: &mut Response) {
+    *res.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
+    *res.body_mut() = Body::from("Method not allowed");
 }
 
 fn get_file_name(path: &Path) -> BoxResult<&str> {

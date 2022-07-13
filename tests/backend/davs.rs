@@ -656,7 +656,7 @@ async fn copy_file() -> Result<()> {
         .header("Destination", &new_url)
         .send()
         .await?;
-    assert_eq!(resp.status(), 204);
+    assert_eq!(resp.status(), 201);
     let resp = app.client.get(new_url).send().await?;
     assert_eq!(resp.status(), 200);
     Ok(())
@@ -708,7 +708,7 @@ async fn move_file() -> Result<()> {
         .header("Destination", &new_url)
         .send()
         .await?;
-    assert_eq!(resp.status(), 204);
+    assert_eq!(resp.status(), 201);
     let resp = app.client.get(new_url).send().await?;
     assert_eq!(resp.status(), 200);
     let resp = app.client.get(origin_url).send().await?;

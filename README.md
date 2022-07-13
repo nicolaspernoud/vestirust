@@ -26,3 +26,4 @@
 - [ ] Error handling
 - [ ] Remove clones, panics, expects, unwraps, println!, etc.
 - [ ] Tests
+- [ ] Litmus compliance in CI tests
