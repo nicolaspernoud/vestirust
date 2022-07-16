@@ -1,4 +1,3 @@
-use array_tool::vec::Intersect;
 use axum::extract::ConnectInfo;
 use serde::Deserialize;
 use serde::Serialize;
@@ -35,6 +34,7 @@ use hyper_reverse_proxy::ReverseProxy;
 
 use crate::configuration::ConfigMap;
 use crate::configuration::HostType;
+use crate::users::check_user_has_role;
 use crate::users::User;
 
 lazy_static::lazy_static! {
@@ -66,11 +66,10 @@ pub async fn proxy_handler(
     };
 
     // Check authorization
-    if target.secured && user.roles.intersect(target.roles).is_empty() {
-        return Response::builder()
-            .status(StatusCode::FORBIDDEN)
-            .body(Body::empty())
-            .unwrap();
+    if target.secured {
+        if let Some(response) = check_user_has_role(&user, target) {
+            return response;
+        }
     }
 
     match PROXY_CLIENT

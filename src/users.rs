@@ -15,9 +15,14 @@ use axum::Extension;
 use headers::HeaderMap;
 use hyper::header;
 use hyper::header::SET_COOKIE;
+use hyper::Body;
+use hyper::StatusCode;
 
 use serde::Deserialize;
 use serde::Serialize;
+
+use crate::apps::App;
+use crate::configuration::HostType;
 
 static COOKIE_NAME: &str = "SESSION";
 
@@ -103,4 +108,20 @@ pub async fn local_auth(
     headers.insert(SET_COOKIE, cookie.parse().unwrap());
 
     (headers, Redirect::to("/"))
+}
+
+pub fn check_user_has_role(user: &User, app: &HostType) -> Option<Response<Body>> {
+    for user_role in user.roles.iter() {
+        for role in app.roles().iter() {
+            if user_role == role {
+                return Some(
+                    Response::builder()
+                        .status(StatusCode::FORBIDDEN)
+                        .body(Body::empty())
+                        .unwrap(),
+                );
+            }
+        }
+    }
+    None
 }

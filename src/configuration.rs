@@ -92,6 +92,15 @@ pub enum HostType {
     Dav(Dav),
 }
 
+impl HostType {
+    pub fn roles(&self) -> &Vec<String> {
+        match self {
+            HostType::App(app) => &app.roles,
+            HostType::Dav(dav) => &dav.roles,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
