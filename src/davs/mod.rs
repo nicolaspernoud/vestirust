@@ -24,12 +24,12 @@ lazy_static::lazy_static! {
 }
 
 pub async fn webdav_handler(
-    user: User,
+    user: Option<User>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     dav: HostType,
     req: Request<Body>,
 ) -> Response<Body> {
-    if let Some(value) = check_authorization(&dav, user) {
+    if let Some(value) = check_authorization(&dav, &user) {
         return value;
     }
 

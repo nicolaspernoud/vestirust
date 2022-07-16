@@ -111,11 +111,16 @@ pub async fn local_auth(
     (headers, Redirect::to("/"))
 }
 
-pub fn check_user_has_role_or_forbid(user: &User, target: &HostType) -> Option<Response<Body>> {
-    for user_role in user.roles.iter() {
-        for role in target.roles().iter() {
-            if user_role == role {
-                return None;
+pub fn check_user_has_role_or_forbid(
+    user: &Option<User>,
+    target: &HostType,
+) -> Option<Response<Body>> {
+    if let Some(user) = user {
+        for user_role in user.roles.iter() {
+            for role in target.roles().iter() {
+                if user_role == role {
+                    return None;
+                }
             }
         }
     }
@@ -127,9 +132,9 @@ pub fn check_user_has_role_or_forbid(user: &User, target: &HostType) -> Option<R
     )
 }
 
-pub fn check_authorization(app: &HostType, user: User) -> Option<Response<Body>> {
+pub fn check_authorization(app: &HostType, user: &Option<User>) -> Option<Response<Body>> {
     if app.secured() {
-        if let Some(response) = check_user_has_role_or_forbid(&user, app) {
+        if let Some(response) = check_user_has_role_or_forbid(user, app) {
             return Some(response);
         }
     }
@@ -145,13 +150,22 @@ mod check_user_has_role_or_forbid_tests {
     };
 
     #[test]
-    fn test_check_user_has_all_roles() {
+    fn test_no_user() {
+        let user = &None;
+        let mut app: App = App::default();
+        app.roles = vec!["role1".to_string(), "role2".to_string()];
+        let target = HostType::App(app);
+        assert!(check_user_has_role_or_forbid(user, &target).is_some());
+    }
+
+    #[test]
+    fn test_user_has_all_roles() {
         let mut user = User::default();
         user.roles = vec!["role1".to_string(), "role2".to_string()];
         let mut app: App = App::default();
         app.roles = vec!["role1".to_string(), "role2".to_string()];
         let target = HostType::App(app);
-        assert!(check_user_has_role_or_forbid(&user, &target).is_none());
+        assert!(check_user_has_role_or_forbid(&Some(user), &target).is_none());
     }
 
     #[test]
@@ -161,7 +175,7 @@ mod check_user_has_role_or_forbid_tests {
         let mut app: App = App::default();
         app.roles = vec!["role1".to_string(), "role2".to_string()];
         let target = HostType::App(app);
-        assert!(check_user_has_role_or_forbid(&user, &target).is_none());
+        assert!(check_user_has_role_or_forbid(&Some(user), &target).is_none());
     }
 
     #[test]
@@ -171,7 +185,7 @@ mod check_user_has_role_or_forbid_tests {
         let mut app: App = App::default();
         app.roles = vec!["role1".to_string(), "role2".to_string()];
         let target = HostType::App(app);
-        assert!(check_user_has_role_or_forbid(&user, &target).is_some());
+        assert!(check_user_has_role_or_forbid(&Some(user), &target).is_some());
     }
 
     #[test]
@@ -180,7 +194,7 @@ mod check_user_has_role_or_forbid_tests {
         let mut app: App = App::default();
         app.roles = vec!["role1".to_string(), "role2".to_string()];
         let target = HostType::App(app);
-        assert!(check_user_has_role_or_forbid(&user, &target).is_some());
+        assert!(check_user_has_role_or_forbid(&Some(user), &target).is_some());
     }
 
     #[test]
@@ -189,7 +203,7 @@ mod check_user_has_role_or_forbid_tests {
         user.roles = vec!["role1".to_string(), "role2".to_string()];
         let app: App = App::default();
         let target = HostType::App(app);
-        assert!(check_user_has_role_or_forbid(&user, &target).is_some());
+        assert!(check_user_has_role_or_forbid(&Some(user), &target).is_some());
     }
 
     #[test]
@@ -197,6 +211,6 @@ mod check_user_has_role_or_forbid_tests {
         let user = User::default();
         let app: App = App::default();
         let target = HostType::App(app);
-        assert!(check_user_has_role_or_forbid(&user, &target).is_some());
+        assert!(check_user_has_role_or_forbid(&Some(user), &target).is_some());
     }
 }

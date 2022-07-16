@@ -25,7 +25,7 @@ impl Server {
     pub async fn build(config_file: &str, tx: Sender<()>) -> Result<Self, anyhow::Error> {
         let config = load_config(config_file).await?;
 
-        async fn website_handler(_user: crate::users::User) -> Html<String> {
+        async fn website_handler() -> Html<String> {
             Html(format!("Hello world from main server !"))
         }
 

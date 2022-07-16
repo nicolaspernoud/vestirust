@@ -40,14 +40,14 @@ lazy_static::lazy_static! {
 }
 
 pub async fn proxy_handler(
-    user: User,
+    user: Option<User>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     app: HostType,
     mut req: Request<Body>,
 ) -> Response<Body> {
     *Request::version_mut(&mut req) = Version::HTTP_11;
 
-    if let Some(value) = check_authorization(&app, user) {
+    if let Some(value) = check_authorization(&app, &user) {
         return value;
     }
 

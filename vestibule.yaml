@@ -12,7 +12,7 @@ apps:
     is_proxy: true
     host: app1
     forward_to: localhost:8081
-    secured: true
+    secured: false
     login: admin
     password: ff54fds6f
     openpath: ""
@@ -32,6 +32,7 @@ apps:
     openpath: "/javascript_simple.html"
     roles:
       - ADMINS
+      - USERS
 davs:
   - id: 1
     host: files1
@@ -40,7 +41,7 @@ davs:
     name: Files 1
     icon: file-invoice
     color: "#2ce027"
-    secured: true
+    secured: false
     roles:
       - ADMINS
       - USERS

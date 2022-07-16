@@ -131,7 +131,6 @@ impl<B> FromRequest<B> for HostType
 where
     B: Send,
 {
-    // If anything goes wrong or no session is found, redirect to the auth page
     type Rejection = NotFound;
 
     async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
