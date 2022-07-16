@@ -18,23 +18,17 @@ pub struct App {
     pub roles: Vec<String>,
 }
 
-use axum::{
-    extract::Host,
-    http::{Request, Response},
-    Extension,
-};
+use axum::http::{Request, Response};
 
 use hyper::{client::HttpConnector, Body, StatusCode, Version};
 
 use std::net::SocketAddr;
-use std::sync::Arc;
 type Client = hyper::client::Client<HttpConnector, Body>;
 use hyper::client::connect::dns::GaiResolver;
 use hyper_reverse_proxy::ReverseProxy;
 
-use crate::configuration::ConfigMap;
 use crate::configuration::HostType;
-use crate::users::check_user_has_role;
+use crate::users::check_authorization;
 use crate::users::User;
 
 lazy_static::lazy_static! {
@@ -47,35 +41,25 @@ lazy_static::lazy_static! {
 
 pub async fn proxy_handler(
     user: User,
-    Extension(configmap): Extension<Arc<ConfigMap>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Host(hostname): Host,
+    app: HostType,
     mut req: Request<Body>,
 ) -> Response<Body> {
     *Request::version_mut(&mut req) = Version::HTTP_11;
 
-    // Work out where to proxy to
-    let target = match configmap.get(&hostname) {
-        Some(HostType::App(app)) => app,
-        _ => {
-            return Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::empty())
-                .unwrap()
-        }
-    };
-
-    // Check authorization
-    if target.secured {
-        if let Some(response) = check_user_has_role(&user, target) {
-            return response;
-        }
+    if let Some(value) = check_authorization(&app, user) {
+        return value;
     }
+
+    let app = match app {
+        HostType::App(app) => app,
+        _ => panic!("Service is not an app !"),
+    };
 
     match PROXY_CLIENT
         .call(
             addr.ip(),
-            format!("http://{}", target.forward_to).as_str(),
+            format!("http://{}", app.forward_to).as_str(),
             req,
         )
         .await

@@ -2,6 +2,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
+use async_session::async_trait;
+use axum::extract::rejection::TypedHeaderRejectionReason;
+use axum::extract::FromRequest;
+use axum::extract::RequestParts;
+use axum::response::IntoResponse;
+use axum::response::Response;
+use axum::Extension;
+use axum::TypedHeader;
+use hyper::header;
+use hyper::StatusCode;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -86,7 +96,7 @@ pub async fn load_config(config_file: &str) -> Result<(Config, Arc<ConfigMap>), 
     Ok((config, Arc::new(hashmap)))
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum HostType {
     App(App),
     Dav(Dav),
@@ -98,6 +108,54 @@ impl HostType {
             HostType::App(app) => &app.roles,
             HostType::Dav(dav) => &dav.roles,
         }
+    }
+
+    pub fn secured(&self) -> bool {
+        match self {
+            HostType::App(app) => app.secured,
+            HostType::Dav(dav) => dav.secured,
+        }
+    }
+}
+
+pub struct NotFound;
+
+impl IntoResponse for NotFound {
+    fn into_response(self) -> Response {
+        StatusCode::NOT_FOUND.into_response()
+    }
+}
+
+#[async_trait]
+impl<B> FromRequest<B> for HostType
+where
+    B: Send,
+{
+    // If anything goes wrong or no session is found, redirect to the auth page
+    type Rejection = NotFound;
+
+    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
+        let Extension(configmap) = Extension::<Arc<HashMap<String, HostType>>>::from_request(req)
+            .await
+            .expect("`Config` extension is missing");
+
+        let host = TypedHeader::<headers::Host>::from_request(req)
+            .await
+            .map_err(|e| match *e.name() {
+                header::HOST => match e.reason() {
+                    TypedHeaderRejectionReason::Missing => NotFound,
+                    _ => panic!("unexpected error getting Host header(s): {}", e),
+                },
+                _ => panic!("unexpected error getting Host header(s): {}", e),
+            })?;
+
+        let host = host.hostname();
+
+        // Work out where to target to
+        let target = configmap.get(host).ok_or(()).map_err(|_| NotFound)?;
+        let target = (*target).clone();
+
+        Ok(target)
     }
 }
 

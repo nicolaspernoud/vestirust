@@ -21,10 +21,9 @@ use hyper::StatusCode;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::apps::App;
 use crate::configuration::HostType;
 
-static COOKIE_NAME: &str = "SESSION";
+static COOKIE_NAME: &str = "VESTIBULE_AUTH";
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct User {
@@ -100,7 +99,9 @@ pub async fn local_auth(
     // Build the cookie
     let cookie = format!(
         "{}={}; SameSite=Lax; Domain={}; Path=/",
-        COOKIE_NAME, cookie, hostname
+        COOKIE_NAME,
+        cookie,
+        hostname.split(":").next().expect("No hostname found")
     );
 
     // Set cookie
@@ -110,18 +111,92 @@ pub async fn local_auth(
     (headers, Redirect::to("/"))
 }
 
-pub fn check_user_has_role(user: &User, app: &HostType) -> Option<Response<Body>> {
+pub fn check_user_has_role_or_forbid(user: &User, target: &HostType) -> Option<Response<Body>> {
     for user_role in user.roles.iter() {
-        for role in app.roles().iter() {
+        for role in target.roles().iter() {
             if user_role == role {
-                return Some(
-                    Response::builder()
-                        .status(StatusCode::FORBIDDEN)
-                        .body(Body::empty())
-                        .unwrap(),
-                );
+                return None;
             }
         }
     }
+    Some(
+        Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body(Body::empty())
+            .unwrap(),
+    )
+}
+
+pub fn check_authorization(app: &HostType, user: User) -> Option<Response<Body>> {
+    if app.secured() {
+        if let Some(response) = check_user_has_role_or_forbid(&user, app) {
+            return Some(response);
+        }
+    }
     None
+}
+
+#[cfg(test)]
+mod check_user_has_role_or_forbid_tests {
+    use crate::{
+        apps::App,
+        configuration::HostType,
+        users::{check_user_has_role_or_forbid, User},
+    };
+
+    #[test]
+    fn test_check_user_has_all_roles() {
+        let mut user = User::default();
+        user.roles = vec!["role1".to_string(), "role2".to_string()];
+        let mut app: App = App::default();
+        app.roles = vec!["role1".to_string(), "role2".to_string()];
+        let target = HostType::App(app);
+        assert!(check_user_has_role_or_forbid(&user, &target).is_none());
+    }
+
+    #[test]
+    fn test_user_has_one_role() {
+        let mut user = User::default();
+        user.roles = vec!["role1".to_string()];
+        let mut app: App = App::default();
+        app.roles = vec!["role1".to_string(), "role2".to_string()];
+        let target = HostType::App(app);
+        assert!(check_user_has_role_or_forbid(&user, &target).is_none());
+    }
+
+    #[test]
+    fn test_user_has_no_role() {
+        let mut user = User::default();
+        user.roles = vec!["role3".to_string(), "role4".to_string()];
+        let mut app: App = App::default();
+        app.roles = vec!["role1".to_string(), "role2".to_string()];
+        let target = HostType::App(app);
+        assert!(check_user_has_role_or_forbid(&user, &target).is_some());
+    }
+
+    #[test]
+    fn test_user_roles_are_empty() {
+        let user = User::default();
+        let mut app: App = App::default();
+        app.roles = vec!["role1".to_string(), "role2".to_string()];
+        let target = HostType::App(app);
+        assert!(check_user_has_role_or_forbid(&user, &target).is_some());
+    }
+
+    #[test]
+    fn test_allowed_roles_are_empty() {
+        let mut user = User::default();
+        user.roles = vec!["role1".to_string(), "role2".to_string()];
+        let app: App = App::default();
+        let target = HostType::App(app);
+        assert!(check_user_has_role_or_forbid(&user, &target).is_some());
+    }
+
+    #[test]
+    fn test_all_roles_are_empty() {
+        let user = User::default();
+        let app: App = App::default();
+        let target = HostType::App(app);
+        assert!(check_user_has_role_or_forbid(&user, &target).is_some());
+    }
 }

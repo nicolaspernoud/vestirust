@@ -52,7 +52,7 @@ davs:
     name: Files 2
     icon: file-invoice
     color: "#2ce027"
-    secured: true
+    secured: false
     roles:
       - USERS
     passphrase: ABCD123

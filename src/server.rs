@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
 use async_session::MemoryStore;
 use axum::{
-    extract::Host,
     response::Html,
     routing::{any, get},
     Extension, Router,
@@ -14,9 +11,8 @@ use tower::{ServiceBuilder, ServiceExt};
 
 use crate::{
     apps::proxy_handler,
-    configuration::{load_config, ConfigMap, HostType},
+    configuration::{load_config, HostType},
     davs::webdav_handler,
-    middlewares::strip_port_from_host_middleware,
     users::local_auth,
 };
 
@@ -53,10 +49,8 @@ impl Server {
             .route(
                 "/*path",
                 any(
-                    |Extension(configmap): Extension<Arc<ConfigMap>>,
-                     Host(hostname): Host,
-                     request: Request<Body>| async move {
-                        match configmap.get(&hostname) {
+                    |hostype: Option<HostType>, request: Request<Body>| async move {
+                        match hostype {
                             Some(HostType::App(_)) => proxy_router.oneshot(request).await,
                             Some(HostType::Dav(_)) => webdav_router.oneshot(request).await,
                             None => website_router.oneshot(request).await,
@@ -67,8 +61,7 @@ impl Server {
             .layer(
                 ServiceBuilder::new()
                     .layer(Extension(store))
-                    .layer(Extension(config.1))
-                    .layer(axum::middleware::from_fn(strip_port_from_host_middleware)),
+                    .layer(Extension(config.1)),
             );
 
         Ok(Server {

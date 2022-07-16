@@ -6,13 +6,12 @@ pub(crate) mod webdav_server;
 use std::sync::Arc;
 
 use axum::{
-    extract::{ConnectInfo, Host},
+    extract::ConnectInfo,
     http::{Request, Response},
-    Extension,
 };
 
-use crate::configuration::ConfigMap;
-use crate::configuration::HostType;
+use crate::users::check_authorization;
+use crate::{configuration::HostType, users::User};
 use hyper::{Body, StatusCode};
 use std::net::SocketAddr;
 
@@ -25,23 +24,21 @@ lazy_static::lazy_static! {
 }
 
 pub async fn webdav_handler(
-    Extension(configmap): Extension<Arc<ConfigMap>>,
+    user: User,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Host(hostname): Host,
+    dav: HostType,
     req: Request<Body>,
 ) -> Response<Body> {
-    // Work out where to proxy to
-    let target = match configmap.get(&hostname) {
-        Some(HostType::Dav(dav)) => dav,
-        _ => {
-            return Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::empty())
-                .unwrap()
-        }
+    if let Some(value) = check_authorization(&dav, user) {
+        return value;
+    }
+
+    let dav = match dav {
+        HostType::Dav(app) => app,
+        _ => panic!("Service is not a dav !"),
     };
 
-    match WEBDAV_SERVER.clone().call(req, addr, target).await {
+    match WEBDAV_SERVER.clone().call(req, addr, &dav).await {
         Ok(response) => response,
         Err(_) => Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
