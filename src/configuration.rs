@@ -7,6 +7,7 @@ use serde::Serialize;
 
 use crate::apps::App;
 use crate::davs::model::Dav;
+use crate::users::User;
 use sha2::{Digest, Sha256};
 
 fn debug_mode() -> bool {
@@ -38,6 +39,7 @@ pub struct Config {
     pub letsencrypt_email: String,
     pub apps: Vec<App>,
     pub davs: Vec<Dav>,
+    pub users: Vec<User>,
 }
 
 pub type ConfigMap = HashMap<String, HostType>;
@@ -94,7 +96,7 @@ pub enum HostType {
 mod tests {
     use std::fs;
 
-    use crate::{apps::App, configuration::Config, davs::model::Dav};
+    use crate::{apps::App, configuration::Config, davs::model::Dav, users::User};
 
     lazy_static::lazy_static! {
         static ref APPS: Vec<App> = {
@@ -162,6 +164,23 @@ mod tests {
                 },
             ]
         };
+
+        static ref USERS: Vec<User> = {
+            vec![
+                User {
+                    id: 1,
+                    login: "admin".to_owned(),
+                    password: "password".to_owned(),
+                    roles: vec!["ADMINS".to_owned()],
+                },
+                User {
+                    id: 2,
+                    login: "user".to_owned(),
+                    password: "password".to_owned(),
+                    roles: vec!["USERS".to_owned()],
+                },
+            ]
+        };
     }
 
     #[test]
@@ -175,6 +194,7 @@ mod tests {
             letsencrypt_email: "foo@bar.com".to_owned(),
             apps: APPS.clone(),
             davs: DAVS.clone(),
+            users: USERS.clone(),
         };
 
         // Act

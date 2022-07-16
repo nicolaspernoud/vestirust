@@ -56,3 +56,14 @@ davs:
     roles:
       - USERS
     passphrase: ABCD123
+users:
+  - id: 1
+    login: admin
+    password: password
+    roles:
+      - ADMINS
+  - id: 2
+    login: user
+    password: password
+    roles:
+      - USERS

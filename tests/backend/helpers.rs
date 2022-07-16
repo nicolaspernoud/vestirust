@@ -4,7 +4,7 @@ use tokio::sync::broadcast;
 
 use vestibule::{
     apps::App, configuration::Config, davs::model::Dav, mocks::mock_proxied_server, server::Server,
-    utils::random_string,
+    users::User, utils::random_string,
 };
 
 use anyhow::Result;
@@ -181,6 +181,21 @@ pub fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port:
         },
     ];
 
+    let users = vec![
+        User {
+            id: 1,
+            login: "admin".to_owned(),
+            password: "password".to_owned(),
+            roles: vec!["ADMINS".to_owned()],
+        },
+        User {
+            id: 2,
+            login: "user".to_owned(),
+            password: "password".to_owned(),
+            roles: vec!["USERS".to_owned()],
+        },
+    ];
+
     let config = Config {
         hostname: "vestibule.io".to_owned(),
         debug_mode: true,
@@ -189,6 +204,7 @@ pub fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port:
         http_port: *main_port,
         apps: apps,
         davs: davs,
+        users: users,
     };
 
     // Act

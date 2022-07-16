@@ -1,3 +1,4 @@
+use array_tool::vec::Intersect;
 use axum::extract::ConnectInfo;
 use serde::Deserialize;
 use serde::Serialize;
@@ -34,6 +35,7 @@ use hyper_reverse_proxy::ReverseProxy;
 
 use crate::configuration::ConfigMap;
 use crate::configuration::HostType;
+use crate::users::User;
 
 lazy_static::lazy_static! {
     static ref  PROXY_CLIENT: ReverseProxy<HttpConnector<GaiResolver>> = {
@@ -44,16 +46,16 @@ lazy_static::lazy_static! {
 }
 
 pub async fn proxy_handler(
+    user: User,
     Extension(configmap): Extension<Arc<ConfigMap>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Host(hostname): Host,
     mut req: Request<Body>,
 ) -> Response<Body> {
     *Request::version_mut(&mut req) = Version::HTTP_11;
-    let hostname = hostname.split(":").next().unwrap();
 
     // Work out where to proxy to
-    let target = match configmap.get(hostname) {
+    let target = match configmap.get(&hostname) {
         Some(HostType::App(app)) => app,
         _ => {
             return Response::builder()
@@ -62,6 +64,14 @@ pub async fn proxy_handler(
                 .unwrap()
         }
     };
+
+    // Check authorization
+    if target.secured && user.roles.intersect(target.roles).is_empty() {
+        return Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body(Body::empty())
+            .unwrap();
+    }
 
     match PROXY_CLIENT
         .call(
