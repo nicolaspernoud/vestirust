@@ -13,14 +13,13 @@ use tokio_stream::StreamExt;
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 use tokio_util::compat::TokioAsyncReadCompatExt;
 use tower::MakeService;
+use vestibule::configuration::CONFIG_FILE;
 use vestibule::logger;
 use vestibule::mocks::mock_proxied_server;
 use vestibule::server::Server;
 
 #[macro_use]
 extern crate log;
-
-const CONFIG_FILE: &'static str = "vestibule.yaml";
 
 #[tokio::main]
 async fn main() -> Result<()> {

@@ -1,6 +1,6 @@
 use axum::{
     response::Html,
-    routing::{any, get},
+    routing::{any, get, post},
     Extension, Router,
 };
 use axum_extra::extract::cookie::Key;
@@ -39,7 +39,7 @@ impl Server {
                     Html(format!("Apps reloaded !"))
                 }),
             )
-            .route("/auth/local", get(local_auth))
+            .route("/auth/local", post(local_auth))
             .route("/", any(website_handler));
 
         let proxy_router = Router::new().route("/*path", any(proxy_handler));

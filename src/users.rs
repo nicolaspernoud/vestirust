@@ -1,4 +1,5 @@
 use axum::async_trait;
+use axum::Json;
 
 use axum::extract::FromRequest;
 use axum::extract::Host;
@@ -15,7 +16,9 @@ use hyper::StatusCode;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::configuration::Config;
 use crate::configuration::HostType;
+use crate::configuration::CONFIG_FILE;
 
 static COOKIE_NAME: &str = "VESTIBULE_AUTH";
 
@@ -49,37 +52,61 @@ where
             .await
             .expect("Could not find cookie jar");
 
-        if let Some(_cookie) = jar.get(COOKIE_NAME) {
-            Ok(User {
-                id: 1,
-                login: "admin".to_owned(),
-                password: "password".to_owned(),
-                roles: vec!["ADMINS".to_owned()],
-            })
+        // Get the serialized user from the cookie jar
+        if let Some(cookie) = jar.get(COOKIE_NAME) {
+            // Deserialize the user and return him/her
+            let serialized_user = cookie.value();
+            let user: User = serde_json::from_str(serialized_user).map_err(|_| AuthRedirect)?;
+            Ok(user)
         } else {
             Err(AuthRedirect)
         }
     }
 }
 
+#[derive(Deserialize)]
+pub struct LocalAuth {
+    login: String,
+    password: String,
+}
+
+#[axum_macros::debug_handler]
 pub async fn local_auth(
     jar: SignedCookieJar,
     Host(hostname): Host,
+    Json(payload): Json<LocalAuth>,
 ) -> Result<(SignedCookieJar, Redirect), StatusCode> {
+    // Load configuration
+    let config = Config::from_file(CONFIG_FILE)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Find the user in configuration
+    let user = config
+        .users
+        .iter()
+        .find(|u| u.login == payload.login && u.password == payload.password)
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    // Serialize him/her as a cookie value
+    let encoded = serde_json::to_string(&user).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     let domain = hostname
         .split(":")
         .next()
         .expect("No hostname found")
         .to_owned();
 
-    let cookie = Cookie::build(COOKIE_NAME, "value")
+    // Store the user into the cookie
+    let cookie = Cookie::build(COOKIE_NAME, encoded)
         .domain(domain)
         .path("/")
+        .same_site(axum_extra::extract::cookie::SameSite::Lax)
         .secure(false)
         .http_only(false)
         .finish();
 
-    Ok((jar.add(cookie), Redirect::to("/me")))
+    Ok((jar.add(cookie), Redirect::to("/")))
 }
 
 pub fn check_user_has_role_or_forbid(

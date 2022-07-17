@@ -20,6 +20,8 @@ use crate::davs::model::Dav;
 use crate::users::User;
 use sha2::{Digest, Sha256};
 
+pub const CONFIG_FILE: &'static str = "vestibule.yaml";
+
 fn debug_mode() -> bool {
     false
 }
@@ -55,21 +57,21 @@ pub struct Config {
 pub type ConfigMap = HashMap<String, HostType>;
 
 impl Config {
-    pub fn from_file(filepath: &str) -> Result<Self> {
-        let data = std::fs::read_to_string(filepath)?;
+    pub async fn from_file(filepath: &str) -> Result<Self> {
+        let data = tokio::fs::read_to_string(filepath).await?;
         let config = serde_yaml::from_str::<Config>(&data)?;
         Ok(config)
     }
 
-    pub fn to_file(&self, filepath: &str) -> Result<()> {
+    pub async fn to_file(&self, filepath: &str) -> Result<()> {
         let contents = serde_yaml::to_string::<Config>(self)?;
-        std::fs::write(filepath, contents)?;
+        tokio::fs::write(filepath, contents).await?;
         Ok(())
     }
 }
 
 pub async fn load_config(config_file: &str) -> Result<(Config, Arc<ConfigMap>), anyhow::Error> {
-    let config = Config::from_file(config_file)?;
+    let config = Config::from_file(config_file).await?;
     let hashmap = config
         .apps
         .iter()
@@ -249,8 +251,8 @@ mod tests {
         };
     }
 
-    #[test]
-    fn test_config_to_file_and_back() {
+    #[tokio::test]
+    async fn test_config_to_file_and_back() {
         // Arrange
         let config = Config {
             hostname: "vestibule.io".to_owned(),
@@ -265,8 +267,8 @@ mod tests {
 
         // Act
         let filepath = "config_test.yaml";
-        config.to_file(filepath).unwrap();
-        let new_config = Config::from_file(filepath).unwrap();
+        config.to_file(filepath).await.unwrap();
+        let new_config = Config::from_file(filepath).await.unwrap();
 
         // Assert
         assert_eq!(new_config, config);

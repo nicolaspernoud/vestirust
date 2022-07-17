@@ -39,7 +39,7 @@ impl TestApp {
             std::net::TcpListener::bind("127.0.0.1:0").expect("failed to bind to random port");
         let mock2_port = mock2_listener.local_addr().unwrap().port();
 
-        create_apps_file(&id, &main_port, &mock1_port, &mock2_port);
+        create_apps_file(&id, &main_port, &mock1_port, &mock2_port).await;
 
         tokio::spawn(mock_proxied_server(mock1_listener));
         tokio::spawn(mock_proxied_server(mock2_listener));
@@ -103,7 +103,7 @@ impl Drop for TestApp {
     }
 }
 
-pub fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port: &u16) {
+pub async fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port: &u16) {
     let filepath = format!("{}.yaml", &id);
     let apps = vec![
         App {
@@ -208,7 +208,7 @@ pub fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2_port:
     };
 
     // Act
-    config.to_file(&filepath).unwrap();
+    config.to_file(&filepath).await.unwrap();
 }
 
 fn create_test_tree(base: &str) -> Result<()> {
