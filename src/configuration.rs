@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
-use async_session::async_trait;
+use axum::async_trait;
 use axum::extract::rejection::TypedHeaderRejectionReason;
 use axum::extract::FromRequest;
 use axum::extract::RequestParts;

@@ -2,7 +2,6 @@ pub mod apps;
 pub mod configuration;
 pub mod davs;
 pub mod logger;
-pub mod middlewares;
 pub mod mocks;
 pub mod server;
 pub mod users;

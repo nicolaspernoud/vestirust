@@ -1,9 +1,9 @@
-use async_session::MemoryStore;
 use axum::{
     response::Html,
     routing::{any, get},
     Extension, Router,
 };
+use axum_extra::extract::cookie::Key;
 use hyper::{Body, Request};
 use tokio::sync::broadcast::Sender;
 
@@ -25,11 +25,11 @@ impl Server {
     pub async fn build(config_file: &str, tx: Sender<()>) -> Result<Self, anyhow::Error> {
         let config = load_config(config_file).await?;
 
+        let key = Key::generate();
+
         async fn website_handler() -> Html<String> {
             Html(format!("Hello world from main server !"))
         }
-
-        let store = MemoryStore::new();
 
         let website_router = Router::new()
             .route(
@@ -60,7 +60,7 @@ impl Server {
             )
             .layer(
                 ServiceBuilder::new()
-                    .layer(Extension(store))
+                    .layer(Extension(key))
                     .layer(Extension(config.1)),
             );
 

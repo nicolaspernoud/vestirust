@@ -1,20 +1,14 @@
-use async_session::async_trait;
-use async_session::MemoryStore;
-use async_session::Session;
-use async_session::SessionStore;
-use axum::extract::rejection::TypedHeaderRejectionReason;
+use axum::async_trait;
+
 use axum::extract::FromRequest;
 use axum::extract::Host;
 use axum::extract::RequestParts;
-use axum::extract::TypedHeader;
 
 use axum::response::IntoResponse;
 use axum::response::Redirect;
 use axum::response::Response;
-use axum::Extension;
-use headers::HeaderMap;
-use hyper::header;
-use hyper::header::SET_COOKIE;
+use axum_extra::extract::cookie::Cookie;
+use axum_extra::extract::SignedCookieJar;
 use hyper::Body;
 use hyper::StatusCode;
 
@@ -51,64 +45,41 @@ where
     type Rejection = AuthRedirect;
 
     async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
-        let Extension(store) = Extension::<MemoryStore>::from_request(req)
+        let jar: SignedCookieJar = SignedCookieJar::from_request(req)
             .await
-            .expect("`MemoryStore` extension is missing");
+            .expect("Could not find cookie jar");
 
-        let cookies = TypedHeader::<headers::Cookie>::from_request(req)
-            .await
-            .map_err(|e| match *e.name() {
-                header::COOKIE => match e.reason() {
-                    TypedHeaderRejectionReason::Missing => AuthRedirect,
-                    _ => panic!("unexpected error getting Cookie header(s): {}", e),
-                },
-                _ => panic!("unexpected error getting cookies: {}", e),
-            })?;
-        let session_cookie = cookies.get(COOKIE_NAME).ok_or(AuthRedirect)?;
-
-        let session = store
-            .load_session(session_cookie.to_string())
-            .await
-            .unwrap()
-            .ok_or(AuthRedirect)?;
-
-        let user = session.get::<User>("user").ok_or(AuthRedirect)?;
-
-        Ok(user)
+        if let Some(_cookie) = jar.get(COOKIE_NAME) {
+            Ok(User {
+                id: 1,
+                login: "admin".to_owned(),
+                password: "password".to_owned(),
+                roles: vec!["ADMINS".to_owned()],
+            })
+        } else {
+            Err(AuthRedirect)
+        }
     }
 }
 
 pub async fn local_auth(
-    Extension(store): Extension<MemoryStore>,
+    jar: SignedCookieJar,
     Host(hostname): Host,
-) -> impl IntoResponse {
-    let user = User {
-        id: 1,
-        login: "admin".to_owned(),
-        password: "password".to_owned(),
-        roles: vec!["ADMINS".to_owned()],
-    };
+) -> Result<(SignedCookieJar, Redirect), StatusCode> {
+    let domain = hostname
+        .split(":")
+        .next()
+        .expect("No hostname found")
+        .to_owned();
 
-    // Create a new session filled with user data
-    let mut session = Session::new();
-    session.insert("user", &user).unwrap();
+    let cookie = Cookie::build(COOKIE_NAME, "value")
+        .domain(domain)
+        .path("/")
+        .secure(false)
+        .http_only(false)
+        .finish();
 
-    // Store session and get corresponding cookie
-    let cookie = store.store_session(session).await.unwrap().unwrap();
-
-    // Build the cookie
-    let cookie = format!(
-        "{}={}; SameSite=Lax; Domain={}; Path=/",
-        COOKIE_NAME,
-        cookie,
-        hostname.split(":").next().expect("No hostname found")
-    );
-
-    // Set cookie
-    let mut headers = HeaderMap::new();
-    headers.insert(SET_COOKIE, cookie.parse().unwrap());
-
-    (headers, Redirect::to("/"))
+    Ok((jar.add(cookie), Redirect::to("/me")))
 }
 
 pub fn check_user_has_role_or_forbid(
