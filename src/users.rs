@@ -1,3 +1,8 @@
+use argon2::password_hash::SaltString;
+use argon2::Argon2;
+use argon2::PasswordHash;
+use argon2::PasswordHasher;
+use argon2::PasswordVerifier;
 use axum::async_trait;
 use axum::Json;
 
@@ -13,6 +18,7 @@ use axum_extra::extract::SignedCookieJar;
 use hyper::Body;
 use hyper::StatusCode;
 
+use rand::rngs::OsRng;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -24,8 +30,8 @@ static COOKIE_NAME: &str = "VESTIBULE_AUTH";
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct User {
-    pub id: usize,
     pub login: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub password: String,
     pub roles: Vec<String>,
 }
@@ -70,6 +76,21 @@ pub struct LocalAuth {
     password: String,
 }
 
+/*
+TEST IN BROWSER CONSOLE WITH :
+
+await fetch("http://vestibule.127.0.0.1.nip.io:8080/auth/local", {
+  credentials: "include",
+  method: "POST",
+  mode: "cors",
+  headers: {
+    "content-type": "application/json",
+  },
+  body: '{"login":"admin", "password":"password"}',
+});
+
+*/
+
 #[axum_macros::debug_handler]
 pub async fn local_auth(
     jar: SignedCookieJar,
@@ -77,16 +98,26 @@ pub async fn local_auth(
     Json(payload): Json<LocalAuth>,
 ) -> Result<(SignedCookieJar, Redirect), StatusCode> {
     // Load configuration
-    let config = Config::from_file(CONFIG_FILE)
+    let mut config = Config::from_file(CONFIG_FILE)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Find the user in configuration
-    let user = config
+    let mut user = config
         .users
-        .iter()
-        .find(|u| u.login == payload.login && u.password == payload.password)
+        .iter_mut()
+        .find(|u| u.login == payload.login)
         .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    // Check if the given password is correct
+    let parsed_hash =
+        PasswordHash::new(&user.password).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Argon2::default()
+        .verify_password(payload.password.as_bytes(), &parsed_hash)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    // Clean the password from the cookie
+    user.password = "".to_string();
 
     // Serialize him/her as a cookie value
     let encoded = serde_json::to_string(&user).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -107,6 +138,71 @@ pub async fn local_auth(
         .finish();
 
     Ok((jar.add(cookie), Redirect::to("/")))
+}
+
+/*
+TEST IN BROWSER CONSOLE :
+
+await fetch("http://vestibule.127.0.0.1.nip.io:8080/api/admin/users", {
+    "credentials": "include",
+    "headers": {
+        "Content-Type": "application/json"
+    },
+    "method": "POST",
+    "mode": "cors",
+    "body": '{"id":3,"login":"nicolas","password":"verystrongpassword","roles":["ADMINS"]}'
+});
+
+*/
+
+pub async fn add_user(
+    Json(mut payload): Json<User>,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+    // Load the configuration
+    let mut config = Config::from_file(CONFIG_FILE).await.map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not load configuration",
+        )
+    })?;
+    // Find the user
+    if let Some(user) = config.users.iter_mut().find(|u| u.login == payload.login) {
+        // It is an existing user, we only hash the password if it is not empty
+        if !payload.password.is_empty() {
+            hash_password(&mut payload)
+                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "password hash failed"))?;
+        } else {
+            payload.password = user.password.clone();
+        }
+        *user = payload;
+    } else {
+        // It is a new user, we need to hash the password
+        if payload.password.is_empty() {
+            return Err((StatusCode::NOT_ACCEPTABLE, "password is required"));
+        }
+        hash_password(&mut payload)
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "password hash failed"))?;
+        config.users.push(payload);
+    }
+
+    // Save the configuration
+    config.to_file(CONFIG_FILE).await.map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not save configuration",
+        )
+    })?;
+
+    Ok((StatusCode::OK, "user created or updated successfully"))
+}
+
+fn hash_password(payload: &mut User) -> Result<(), argon2::password_hash::Error> {
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+    payload.password = argon2
+        .hash_password(payload.password.trim().as_bytes(), &salt)?
+        .to_string();
+    Ok(())
 }
 
 pub fn check_user_has_role_or_forbid(

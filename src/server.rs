@@ -13,7 +13,7 @@ use crate::{
     apps::proxy_handler,
     configuration::{load_config, HostType},
     davs::webdav_handler,
-    users::local_auth,
+    users::{add_user, local_auth},
 };
 
 pub struct Server {
@@ -31,6 +31,8 @@ impl Server {
             Html(format!("Hello world from main server !"))
         }
 
+        let admin_router = Router::new().route("/users", post(add_user));
+
         let website_router = Router::new()
             .route(
                 "/reload",
@@ -40,6 +42,7 @@ impl Server {
                 }),
             )
             .route("/auth/local", post(local_auth))
+            .nest("/api/admin", admin_router)
             .route("/", any(website_handler));
 
         let proxy_router = Router::new().route("/*path", any(proxy_handler));
@@ -61,7 +64,25 @@ impl Server {
             .layer(
                 ServiceBuilder::new()
                     .layer(Extension(key))
-                    .layer(Extension(config.1)),
+                    .layer(Extension(config.1)), /*.layer(
+                                                     CorsLayer::new()
+                                                         .allow_origin(config.0.hostname.parse::<HeaderValue>().unwrap())
+                                                         .allow_headers([
+                                                             ACCEPT,
+                                                             ACCEPT_ENCODING,
+                                                             AUTHORIZATION,
+                                                             CONTENT_LENGTH,
+                                                             COOKIE,
+                                                         ])
+                                                         .allow_methods([
+                                                             Method::POST,
+                                                             Method::GET,
+                                                             Method::OPTIONS,
+                                                             Method::PUT,
+                                                             Method::DELETE,
+                                                         ])
+                                                         .allow_credentials(true),
+                                                 ),*/
             );
 
         Ok(Server {

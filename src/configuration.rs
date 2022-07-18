@@ -236,13 +236,11 @@ mod tests {
         static ref USERS: Vec<User> = {
             vec![
                 User {
-                    id: 1,
                     login: "admin".to_owned(),
                     password: "password".to_owned(),
                     roles: vec!["ADMINS".to_owned()],
                 },
                 User {
-                    id: 2,
                     login: "user".to_owned(),
                     password: "password".to_owned(),
                     roles: vec!["USERS".to_owned()],

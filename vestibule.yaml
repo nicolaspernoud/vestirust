@@ -1,9 +1,9 @@
 ---
+hostname: vestibule.127.0.0.1.nip.io
 debug_mode: true
 http_port: 8080
 auto_tls: false
 letsencrypt_email: foo@bar.com
-hostname: vestibule.127.0.0.1.nip.io
 apps:
   - id: 1
     name: App 1
@@ -11,7 +11,7 @@ apps:
     color: "#010101"
     is_proxy: true
     host: app1
-    forward_to: localhost:8081
+    forward_to: "localhost:8081"
     secured: false
     login: admin
     password: ff54fds6f
@@ -25,46 +25,46 @@ apps:
     color: "#020202"
     is_proxy: false
     host: app2
-    forward_to: localhost:8082
+    forward_to: "localhost:8082"
     secured: true
     login: admin
     password: ff54fds6f
-    openpath: "/javascript_simple.html"
+    openpath: /javascript_simple.html
     roles:
       - ADMINS
       - USERS
 davs:
   - id: 1
     host: files1
-    directory: ./data/dir1
+    directory: "./data/dir1"
     writable: true
     name: Files 1
     icon: file-invoice
     color: "#2ce027"
     secured: false
+    allow_symlinks: false
     roles:
       - ADMINS
       - USERS
     passphrase: ""
   - id: 2
     host: files2
-    directory: ./data/dir2
+    directory: "./data/dir2"
     writable: true
     name: Files 2
     icon: file-invoice
     color: "#2ce027"
     secured: false
+    allow_symlinks: false
     roles:
       - USERS
     passphrase: ABCD123
 users:
-  - id: 1
-    login: admin
-    password: password
+  - login: admin
+    password: "$argon2id$v=19$m=4096,t=3,p=1$QWsdpHrjCaPwy3IODegzNA$dqyioLh9ndJ3V7OoKpkCaczJmGNKjuG99F5hisd3bPs"
     roles:
       - ADMINS
-  - id: 2
-    login: user
-    password: password
+  - login: user
+    password: "$argon2id$v=19$m=4096,t=3,p=1$ZH9ZFCT6YjYQpxkNt3SQgQ$g3DQawMEWlU1rnMAserFAzUg3Lg2O80s8eH+PrvmUo0"
     roles:
       - USERS

@@ -183,13 +183,11 @@ pub async fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2
 
     let users = vec![
         User {
-            id: 1,
             login: "admin".to_owned(),
             password: "password".to_owned(),
             roles: vec!["ADMINS".to_owned()],
         },
         User {
-            id: 2,
             login: "user".to_owned(),
             password: "password".to_owned(),
             roles: vec!["USERS".to_owned()],
