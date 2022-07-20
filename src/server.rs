@@ -1,6 +1,6 @@
 use axum::{
     response::Html,
-    routing::{any, get, post},
+    routing::{any, delete, get, post},
     Extension, Router,
 };
 use axum_extra::extract::cookie::Key;
@@ -13,7 +13,7 @@ use crate::{
     apps::proxy_handler,
     configuration::{load_config, HostType},
     davs::webdav_handler,
-    users::{add_user, local_auth},
+    users::{add_user, delete_user, get_users, local_auth},
 };
 
 pub struct Server {
@@ -31,7 +31,9 @@ impl Server {
             Html(format!("Hello world from main server !"))
         }
 
-        let admin_router = Router::new().route("/users", post(add_user));
+        let admin_router = Router::new()
+            .route("/users", get(get_users).post(add_user))
+            .route("/users/:user_login", delete(delete_user));
 
         let website_router = Router::new()
             .route(

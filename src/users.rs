@@ -8,6 +8,7 @@ use axum::Json;
 
 use axum::extract::FromRequest;
 use axum::extract::Host;
+use axum::extract::Path;
 use axum::extract::RequestParts;
 
 use axum::response::IntoResponse;
@@ -140,6 +141,54 @@ pub async fn local_auth(
     Ok((jar.add(cookie), Redirect::to("/")))
 }
 
+pub async fn get_users() -> Result<(StatusCode, String), (StatusCode, String)> {
+    // Load the configuration
+    let config = Config::from_file(CONFIG_FILE).await.map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not load configuration".to_owned(),
+        )
+    })?;
+    // Return all the users as Json
+    let encoded = serde_json::to_string(&config.users).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not encode users".to_owned(),
+        )
+    })?;
+    Ok((StatusCode::OK, encoded))
+}
+
+pub async fn delete_user(
+    Path(user_login): Path<(String, String)>,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+    // Load the configuration
+    let mut config = Config::from_file(CONFIG_FILE).await.map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not load configuration",
+        )
+    })?;
+    // Find the user
+    if let Some(pos) = config.users.iter().position(|u| u.login == user_login.1) {
+        // It is an existing user, delete it
+        config.users.remove(pos);
+    } else {
+        // If the user doesn't exist, respond with an error
+        return Err((StatusCode::BAD_REQUEST, "user doesn't exist"));
+    }
+
+    // Save the configuration
+    config.to_file(CONFIG_FILE).await.map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not save configuration",
+        )
+    })?;
+
+    Ok((StatusCode::OK, "user deleted successfully"))
+}
+
 /*
 TEST IN BROWSER CONSOLE :
 
@@ -150,7 +199,7 @@ await fetch("http://vestibule.127.0.0.1.nip.io:8080/api/admin/users", {
     },
     "method": "POST",
     "mode": "cors",
-    "body": '{"id":3,"login":"nicolas","password":"verystrongpassword","roles":["ADMINS"]}'
+    "body": '{"login":"nicolas","password":"verystrongpassword","roles":["ADMINS"]}'
 });
 
 */
@@ -193,7 +242,7 @@ pub async fn add_user(
         )
     })?;
 
-    Ok((StatusCode::OK, "user created or updated successfully"))
+    Ok((StatusCode::CREATED, "user created or updated successfully"))
 }
 
 fn hash_password(payload: &mut User) -> Result<(), argon2::password_hash::Error> {
