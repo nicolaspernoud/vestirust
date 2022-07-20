@@ -32,18 +32,9 @@ static COOKIE_NAME: &str = "VESTIBULE_AUTH";
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct User {
     pub login: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
+    #[serde(skip_serializing_if = "String::is_empty", default)]
     pub password: String,
     pub roles: Vec<String>,
-}
-
-pub struct AuthRedirect;
-
-impl IntoResponse for AuthRedirect {
-    fn into_response(self) -> Response {
-        //Redirect::temporary("http://vestibule.127.0.0.1.nip.io:8080/auth/local").into_response()
-        Redirect::temporary("/auth/local").into_response()
-    }
 }
 
 #[async_trait]
@@ -51,9 +42,7 @@ impl<B> FromRequest<B> for User
 where
     B: Send,
 {
-    // If anything goes wrong or no session is found, redirect to the auth page
-    type Rejection = AuthRedirect;
-
+    type Rejection = StatusCode;
     async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
         let jar: SignedCookieJar = SignedCookieJar::from_request(req)
             .await
@@ -63,11 +52,30 @@ where
         if let Some(cookie) = jar.get(COOKIE_NAME) {
             // Deserialize the user and return him/her
             let serialized_user = cookie.value();
-            let user: User = serde_json::from_str(serialized_user).map_err(|_| AuthRedirect)?;
+            let user: User = serde_json::from_str(serialized_user)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             Ok(user)
         } else {
-            Err(AuthRedirect)
+            Err(StatusCode::UNAUTHORIZED)
         }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Admin(User);
+
+#[async_trait]
+impl<B> FromRequest<B> for Admin
+where
+    B: Send,
+{
+    type Rejection = StatusCode;
+    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
+        let user = User::from_request(req).await?;
+        if !user.roles.contains(&"ADMINS".to_owned()) {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+        Ok(Admin(user))
     }
 }
 
@@ -77,27 +85,12 @@ pub struct LocalAuth {
     password: String,
 }
 
-/*
-TEST IN BROWSER CONSOLE WITH :
-
-await fetch("http://vestibule.127.0.0.1.nip.io:8080/auth/local", {
-  credentials: "include",
-  method: "POST",
-  mode: "cors",
-  headers: {
-    "content-type": "application/json",
-  },
-  body: '{"login":"admin", "password":"password"}',
-});
-
-*/
-
 #[axum_macros::debug_handler]
 pub async fn local_auth(
     jar: SignedCookieJar,
     Host(hostname): Host,
     Json(payload): Json<LocalAuth>,
-) -> Result<(SignedCookieJar, Redirect), StatusCode> {
+) -> Result<(SignedCookieJar, StatusCode), StatusCode> {
     // Load configuration
     let mut config = Config::from_file(CONFIG_FILE)
         .await
@@ -138,10 +131,10 @@ pub async fn local_auth(
         .http_only(false)
         .finish();
 
-    Ok((jar.add(cookie), Redirect::to("/")))
+    Ok((jar.add(cookie), StatusCode::OK))
 }
 
-pub async fn get_users() -> Result<(StatusCode, String), (StatusCode, String)> {
+pub async fn get_users(_admin: Admin) -> Result<(StatusCode, String), (StatusCode, String)> {
     // Load the configuration
     let config = Config::from_file(CONFIG_FILE).await.map_err(|_| {
         (
@@ -160,6 +153,7 @@ pub async fn get_users() -> Result<(StatusCode, String), (StatusCode, String)> {
 }
 
 pub async fn delete_user(
+    _admin: Admin,
     Path(user_login): Path<(String, String)>,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
     // Load the configuration
@@ -189,22 +183,8 @@ pub async fn delete_user(
     Ok((StatusCode::OK, "user deleted successfully"))
 }
 
-/*
-TEST IN BROWSER CONSOLE :
-
-await fetch("http://vestibule.127.0.0.1.nip.io:8080/api/admin/users", {
-    "credentials": "include",
-    "headers": {
-        "Content-Type": "application/json"
-    },
-    "method": "POST",
-    "mode": "cors",
-    "body": '{"login":"nicolas","password":"verystrongpassword","roles":["ADMINS"]}'
-});
-
-*/
-
 pub async fn add_user(
+    _admin: Admin,
     Json(mut payload): Json<User>,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
     // Load the configuration
