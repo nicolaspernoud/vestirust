@@ -5,6 +5,12 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Flutter frontend",
+      "type": "dart",
+      "request": "launch",
+      "program": "frontend/lib/main.dart"
+    },
+    {
       "type": "lldb",
       "request": "launch",
       "name": "Debug executable 'vestibule'",
