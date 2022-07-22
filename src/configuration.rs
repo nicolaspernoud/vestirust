@@ -6,8 +6,6 @@ use axum::async_trait;
 use axum::extract::rejection::TypedHeaderRejectionReason;
 use axum::extract::FromRequest;
 use axum::extract::RequestParts;
-use axum::response::IntoResponse;
-use axum::response::Response;
 use axum::Extension;
 use axum::TypedHeader;
 use hyper::header;
@@ -68,6 +66,31 @@ impl Config {
         tokio::fs::write(filepath, contents).await?;
         Ok(())
     }
+
+    pub async fn to_file_or_internal_server_error(self) -> Result<(), (StatusCode, &'static str)> {
+        self.to_file(CONFIG_FILE).await.map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not save configuration",
+            )
+        })?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl<B> FromRequest<B> for Config
+where
+    B: Send,
+{
+    type Rejection = StatusCode;
+    async fn from_request(_req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
+        // Load configuration
+        let config = Config::from_file(CONFIG_FILE)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        Ok(config)
+    }
 }
 
 pub async fn load_config(config_file: &str) -> Result<(Config, Arc<ConfigMap>), anyhow::Error> {
@@ -120,20 +143,12 @@ impl HostType {
     }
 }
 
-pub struct NotFound;
-
-impl IntoResponse for NotFound {
-    fn into_response(self) -> Response {
-        StatusCode::NOT_FOUND.into_response()
-    }
-}
-
 #[async_trait]
 impl<B> FromRequest<B> for HostType
 where
     B: Send,
 {
-    type Rejection = NotFound;
+    type Rejection = StatusCode;
 
     async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
         let Extension(configmap) = Extension::<Arc<HashMap<String, HostType>>>::from_request(req)
@@ -144,7 +159,7 @@ where
             .await
             .map_err(|e| match *e.name() {
                 header::HOST => match e.reason() {
-                    TypedHeaderRejectionReason::Missing => NotFound,
+                    TypedHeaderRejectionReason::Missing => StatusCode::NOT_FOUND,
                     _ => panic!("unexpected error getting Host header(s): {}", e),
                 },
                 _ => panic!("unexpected error getting Host header(s): {}", e),
@@ -153,7 +168,10 @@ where
         let host = host.hostname();
 
         // Work out where to target to
-        let target = configmap.get(host).ok_or(()).map_err(|_| NotFound)?;
+        let target = configmap
+            .get(host)
+            .ok_or(())
+            .map_err(|_| StatusCode::NOT_FOUND)?;
         let target = (*target).clone();
 
         Ok(target)

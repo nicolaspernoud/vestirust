@@ -10,9 +10,12 @@ use tokio::sync::broadcast::Sender;
 use tower::{ServiceBuilder, ServiceExt};
 
 use crate::{
-    apps::proxy_handler,
+    apps::{add_app, delete_app, get_apps, proxy_handler},
     configuration::{load_config, HostType},
-    davs::webdav_handler,
+    davs::{
+        model::{add_dav, delete_dav, get_davs},
+        webdav_handler,
+    },
     users::{add_user, delete_user, get_users, local_auth},
 };
 
@@ -33,7 +36,11 @@ impl Server {
 
         let admin_router = Router::new()
             .route("/users", get(get_users).post(add_user))
-            .route("/users/:user_login", delete(delete_user));
+            .route("/users/:user_login", delete(delete_user))
+            .route("/apps", get(get_apps).post(add_app))
+            .route("/apps/:app_id", delete(delete_app))
+            .route("/davs", get(get_davs).post(add_dav))
+            .route("/davs/:dav_id", delete(delete_dav));
 
         let website_router = Router::new()
             .route(

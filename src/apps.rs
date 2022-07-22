@@ -1,10 +1,24 @@
-use axum::extract::ConnectInfo;
+use axum::extract::{ConnectInfo, Path};
+use axum::http::{Request, Response};
+use axum::response::IntoResponse;
+use axum::Json;
 use serde::Deserialize;
 use serde::Serialize;
 
+use hyper::{client::HttpConnector, Body, StatusCode, Version};
+
+use std::net::SocketAddr;
+type Client = hyper::client::Client<HttpConnector, Body>;
+use hyper::client::connect::dns::GaiResolver;
+use hyper_reverse_proxy::ReverseProxy;
+
+use crate::configuration::{Config, HostType};
+use crate::users::User;
+use crate::users::{check_authorization, Admin};
+
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct App {
-    pub id: i64,
+    pub id: usize,
     pub name: String,
     pub icon: String,
     pub color: String,
@@ -17,19 +31,6 @@ pub struct App {
     pub openpath: String,
     pub roles: Vec<String>,
 }
-
-use axum::http::{Request, Response};
-
-use hyper::{client::HttpConnector, Body, StatusCode, Version};
-
-use std::net::SocketAddr;
-type Client = hyper::client::Client<HttpConnector, Body>;
-use hyper::client::connect::dns::GaiResolver;
-use hyper_reverse_proxy::ReverseProxy;
-
-use crate::configuration::HostType;
-use crate::users::check_authorization;
-use crate::users::User;
 
 lazy_static::lazy_static! {
     static ref  PROXY_CLIENT: ReverseProxy<HttpConnector<GaiResolver>> = {
@@ -73,4 +74,55 @@ pub async fn proxy_handler(
                 .unwrap()
         }
     }
+}
+
+pub async fn get_apps(
+    config: Config,
+    _admin: Admin,
+) -> Result<(StatusCode, String), (StatusCode, String)> {
+    // Return all the apps as Json
+    let encoded = serde_json::to_string(&config.apps).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not encode apps".to_owned(),
+        )
+    })?;
+    Ok((StatusCode::OK, encoded))
+}
+
+pub async fn delete_app(
+    mut config: Config,
+    _admin: Admin,
+    Path(app_id): Path<(String, usize)>,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+    // Find the app
+    if let Some(pos) = config.apps.iter().position(|a| a.id == app_id.1) {
+        // It is an existing app, delete it
+        config.apps.remove(pos);
+    } else {
+        // If the app doesn't exist, respond with an error
+        return Err((StatusCode::BAD_REQUEST, "app doesn't exist"));
+    }
+
+    config.to_file_or_internal_server_error().await?;
+
+    Ok((StatusCode::OK, "app deleted successfully"))
+}
+
+#[axum_macros::debug_handler]
+pub async fn add_app(
+    mut config: Config,
+    _admin: Admin,
+    Json(payload): Json<App>,
+) -> Result<(StatusCode, &'static str), (StatusCode, &'static str)> {
+    // Find the app
+    if let Some(app) = config.apps.iter_mut().find(|a| a.id == payload.id) {
+        *app = payload;
+    } else {
+        config.apps.push(payload);
+    }
+
+    config.to_file_or_internal_server_error().await?;
+
+    Ok((StatusCode::CREATED, "app created or updated successfully"))
 }

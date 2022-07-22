@@ -12,7 +12,6 @@ use axum::extract::Path;
 use axum::extract::RequestParts;
 
 use axum::response::IntoResponse;
-use axum::response::Redirect;
 use axum::response::Response;
 use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::SignedCookieJar;
@@ -25,7 +24,6 @@ use serde::Serialize;
 
 use crate::configuration::Config;
 use crate::configuration::HostType;
-use crate::configuration::CONFIG_FILE;
 
 static COOKIE_NAME: &str = "VESTIBULE_AUTH";
 
@@ -88,14 +86,10 @@ pub struct LocalAuth {
 #[axum_macros::debug_handler]
 pub async fn local_auth(
     jar: SignedCookieJar,
+    mut config: Config,
     Host(hostname): Host,
     Json(payload): Json<LocalAuth>,
 ) -> Result<(SignedCookieJar, StatusCode), StatusCode> {
-    // Load configuration
-    let mut config = Config::from_file(CONFIG_FILE)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
     // Find the user in configuration
     let mut user = config
         .users
@@ -134,14 +128,10 @@ pub async fn local_auth(
     Ok((jar.add(cookie), StatusCode::OK))
 }
 
-pub async fn get_users(_admin: Admin) -> Result<(StatusCode, String), (StatusCode, String)> {
-    // Load the configuration
-    let config = Config::from_file(CONFIG_FILE).await.map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "could not load configuration".to_owned(),
-        )
-    })?;
+pub async fn get_users(
+    config: Config,
+    _admin: Admin,
+) -> Result<(StatusCode, String), (StatusCode, String)> {
     // Return all the users as Json
     let encoded = serde_json::to_string(&config.users).map_err(|_| {
         (
@@ -153,16 +143,10 @@ pub async fn get_users(_admin: Admin) -> Result<(StatusCode, String), (StatusCod
 }
 
 pub async fn delete_user(
+    mut config: Config,
     _admin: Admin,
     Path(user_login): Path<(String, String)>,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
-    // Load the configuration
-    let mut config = Config::from_file(CONFIG_FILE).await.map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "could not load configuration",
-        )
-    })?;
     // Find the user
     if let Some(pos) = config.users.iter().position(|u| u.login == user_login.1) {
         // It is an existing user, delete it
@@ -172,28 +156,16 @@ pub async fn delete_user(
         return Err((StatusCode::BAD_REQUEST, "user doesn't exist"));
     }
 
-    // Save the configuration
-    config.to_file(CONFIG_FILE).await.map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "could not save configuration",
-        )
-    })?;
+    config.to_file_or_internal_server_error().await?;
 
     Ok((StatusCode::OK, "user deleted successfully"))
 }
 
 pub async fn add_user(
+    mut config: Config,
     _admin: Admin,
     Json(mut payload): Json<User>,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
-    // Load the configuration
-    let mut config = Config::from_file(CONFIG_FILE).await.map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "could not load configuration",
-        )
-    })?;
     // Find the user
     if let Some(user) = config.users.iter_mut().find(|u| u.login == payload.login) {
         // It is an existing user, we only hash the password if it is not empty
@@ -214,13 +186,7 @@ pub async fn add_user(
         config.users.push(payload);
     }
 
-    // Save the configuration
-    config.to_file(CONFIG_FILE).await.map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "could not save configuration",
-        )
-    })?;
+    config.to_file_or_internal_server_error().await?;
 
     Ok((StatusCode::CREATED, "user created or updated successfully"))
 }
