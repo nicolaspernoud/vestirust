@@ -11,7 +11,7 @@ class Explorer extends StatefulWidget {
   _ExplorerState createState() => _ExplorerState();
 }
 
-enum CopyMoveStatus { none, copy, cut }
+enum CopyMoveStatus { none, copy, move }
 
 class _ExplorerState extends State<Explorer> {
   late webdav.Client client;
@@ -96,8 +96,24 @@ class _ExplorerState extends State<Explorer> {
               icon: const Icon(Icons.paste),
               onPressed: () async {
                 CancelToken c = CancelToken();
-                await client.copy(_copyMovePath, dirPath, true, c);
+                String dest;
+                // Case of directory
+                if (_copyMovePath.endsWith("/")) {
+                  dest = dirPath +
+                      _copyMovePath
+                          .substring(0, _copyMovePath.length - 1)
+                          .split("/")
+                          .last;
+                } else {
+                  dest = dirPath;
+                }
+                if (_copyMoveStatus == CopyMoveStatus.copy) {
+                  await client.copy(_copyMovePath, dest, true, c);
+                } else {
+                  await client.rename(_copyMovePath, dest, true, c);
+                }
                 setState(() {
+                  _copyMoveStatus = CopyMoveStatus.none;
                   _getData();
                 });
               })
@@ -125,6 +141,14 @@ class _ExplorerState extends State<Explorer> {
                   onPressed: (() {
                     setState(() {
                       _copyMoveStatus = CopyMoveStatus.copy;
+                      _copyMovePath = file.path!;
+                    });
+                  })),
+              IconButton(
+                  icon: const Icon(Icons.cut),
+                  onPressed: (() {
+                    setState(() {
+                      _copyMoveStatus = CopyMoveStatus.move;
                       _copyMovePath = file.path!;
                     });
                   })),

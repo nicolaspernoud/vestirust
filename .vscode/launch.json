@@ -5,7 +5,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Flutter frontend",
+      "name": "Debug vestibule frontend (flutter)",
       "type": "dart",
       "request": "launch",
       "program": "frontend/lib/main.dart"
@@ -13,7 +13,7 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug executable 'vestibule'",
+      "name": "Debug vestibule backend (axum)",
       "cargo": {
         "args": ["build", "--bin=vestibule", "--package=vestibule"],
         "filter": {
@@ -27,7 +27,7 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug unit tests in executable 'vestibule'",
+      "name": "Debug vestibule backend unit tests (axum)",
       "cargo": {
         "args": ["test", "--no-run", "--bin=vestibule", "--package=vestibule"],
         "filter": {
