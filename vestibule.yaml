@@ -1,5 +1,5 @@
 ---
-hostname: vestibule.10.0.2.2.nip.io
+hostname: vestibule.127.0.0.1.nip.io
 debug_mode: true
 http_port: 8080
 auto_tls: false

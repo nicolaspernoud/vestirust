@@ -663,6 +663,28 @@ async fn copy_file() -> Result<()> {
 }
 
 #[tokio::test]
+async fn copy_dir() -> Result<()> {
+    let app = TestApp::spawn().await;
+    let url = format!("http://files1.vestibule.io:{}/dira/", app.port);
+    let new_url = format!("http://files1.vestibule.io:{}/newdir/", app.port);
+    let resp = copy(&app, &url)
+        .header("Destination", &new_url)
+        .send()
+        .await?;
+    assert_eq!(resp.status(), 201);
+    let mut test_url = format!(
+        "http://files1.vestibule.io:{}/newdir/dira-a/file1",
+        app.port
+    );
+    let resp = app.client.get(test_url).send().await?;
+    assert_eq!(resp.status(), 200);
+    test_url = format!("http://files1.vestibule.io:{}/newdir/file1", app.port);
+    let resp = app.client.get(test_url).send().await?;
+    assert_eq!(resp.status(), 200);
+    Ok(())
+}
+
+#[tokio::test]
 async fn copy_not_writable() -> Result<()> {
     let app = TestApp::spawn().await;
     let url = format!("http://files3.vestibule.io:{}/dira/file1", app.port);
@@ -712,6 +734,31 @@ async fn move_file() -> Result<()> {
     let resp = app.client.get(new_url).send().await?;
     assert_eq!(resp.status(), 200);
     let resp = app.client.get(origin_url).send().await?;
+    assert_eq!(resp.status(), 404);
+    Ok(())
+}
+
+#[tokio::test]
+async fn move_dir() -> Result<()> {
+    let app = TestApp::spawn().await;
+    let url = format!("http://files1.vestibule.io:{}/dira/", app.port);
+    let new_url = format!("http://files1.vestibule.io:{}/newdir/", app.port);
+    let resp = mv(&app, &url)
+        .header("Destination", &new_url)
+        .send()
+        .await?;
+    assert_eq!(resp.status(), 201);
+    let mut test_url = format!(
+        "http://files1.vestibule.io:{}/newdir/dira-a/file1",
+        app.port
+    );
+    let resp = app.client.get(test_url).send().await?;
+    assert_eq!(resp.status(), 200);
+    test_url = format!("http://files1.vestibule.io:{}/newdir/file1", app.port);
+    let resp = app.client.get(test_url).send().await?;
+    assert_eq!(resp.status(), 200);
+    test_url = format!("http://files1.vestibule.io:{}/dira/file1", app.port);
+    let resp = app.client.get(test_url).send().await?;
     assert_eq!(resp.status(), 404);
     Ok(())
 }

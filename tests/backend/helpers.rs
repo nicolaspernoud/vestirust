@@ -213,8 +213,9 @@ fn create_test_tree(base: &str) -> Result<()> {
     for dir in vec!["dir1", "dir2", "dir3"] {
         fs::create_dir_all(format!("./data/{base}/{dir}/dira"))?;
         fs::create_dir_all(format!("./data/{base}/{dir}/dirb"))?;
+        fs::create_dir_all(format!("./data/{base}/{dir}/dira/dira-a"))?;
     }
-    for dir in vec!["dira", "dirb"] {
+    for dir in vec!["dira", "dirb", "dira/dira-a"] {
         for file in vec!["file1", "file2"] {
             fs::OpenOptions::new()
                 .write(true)

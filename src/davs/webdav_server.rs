@@ -22,15 +22,16 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-use log::{error, info};
+use futures_util::{future::BoxFuture, FutureExt, StreamExt};
+use log::{debug, error, info};
 use std::borrow::Cow;
+use std::io::Error;
 use xml::escape::escape_str_pcdata;
 
 use async_walkdir::WalkDir;
 use async_zip::write::{EntryOptions, ZipFileWriter};
 use async_zip::Compression;
 use chrono::{TimeZone, Utc};
-use futures::stream::StreamExt;
 use futures::TryStreamExt;
 use headers::{
     AcceptRanges, ContentType, ETag, HeaderMap, HeaderMapExt, IfModifiedSince, IfNoneMatch,
@@ -57,8 +58,10 @@ use uuid::Uuid;
 use crate::davs::encrypted_streamer::EncryptedStreamer;
 
 use super::encrypted_streamer::decrypted_size;
+use super::headers::Depth;
 use super::model::Dav;
 use super::streamer::Streamer;
+use crate::davs::headers::Overwrite;
 
 pub type Request = hyper::Request<Body>;
 pub type Response = hyper::Response<Body>;
@@ -236,7 +239,7 @@ impl WebdavServer {
                     } else if is_miss {
                         status_not_found(&mut res);
                     } else {
-                        self.handle_copy(path, headers, &mut res, &dav.directory)
+                        self.handle_copymove(path, req, method, &mut res, &dav.directory)
                             .await?
                     }
                 }
@@ -246,7 +249,7 @@ impl WebdavServer {
                     } else if is_miss {
                         status_not_found(&mut res);
                     } else {
-                        self.handle_move(path, headers, &mut res, &dav.directory)
+                        self.handle_copymove(path, req, method, &mut res, &dav.directory)
                             .await?
                     }
                 }
@@ -602,57 +605,6 @@ impl WebdavServer {
         }
     }
 
-    async fn handle_copy(
-        &self,
-        path: &Path,
-        headers: &HeaderMap<HeaderValue>,
-        res: &mut Response,
-        dav_path: &str,
-    ) -> BoxResult<()> {
-        let dest = match self.extract_dest(headers, dav_path) {
-            Some(dest) => dest,
-            None => {
-                *res.status_mut() = StatusCode::BAD_REQUEST;
-                return Ok(());
-            }
-        };
-
-        if let Some(parent) = dest.parent() {
-            if fs::symlink_metadata(parent).await.is_err() {
-                *res.status_mut() = StatusCode::CONFLICT;
-                return Ok(());
-            }
-        }
-
-        fs::copy(path, &dest).await?;
-
-        *res.status_mut() = StatusCode::CREATED;
-        Ok(())
-    }
-
-    async fn handle_move(
-        &self,
-        path: &Path,
-        headers: &HeaderMap<HeaderValue>,
-        res: &mut Response,
-        dav_path: &str,
-    ) -> BoxResult<()> {
-        let dest = match self.extract_dest(headers, dav_path) {
-            Some(dest) => dest,
-            None => {
-                *res.status_mut() = StatusCode::BAD_REQUEST;
-                return Ok(());
-            }
-        };
-
-        ensure_path_parent(&dest).await?;
-
-        fs::rename(path, &dest).await?;
-
-        *res.status_mut() = StatusCode::CREATED;
-        Ok(())
-    }
-
     async fn handle_lock(&self, req_path: &str, auth: bool, res: &mut Response) -> BoxResult<()> {
         let token = if auth {
             format!("opaquelocktoken:{}", Uuid::new_v4())
@@ -710,6 +662,9 @@ impl WebdavServer {
     }
 
     fn extract_path(&self, wanted_path: &str, dav_path: &str) -> Option<PathBuf> {
+        if wanted_path.contains("..") {
+            return None;
+        }
         let decoded_path = decode_uri(&wanted_path[1..])?;
         let slashes_switched = if cfg!(windows) {
             decoded_path.replace('/', "\\")
@@ -799,6 +754,185 @@ impl WebdavServer {
             mtime,
             size,
         }))
+    }
+
+    async fn handle_copymove(
+        &self,
+        path: &Path,
+        req: Request,
+        method: Method,
+        res: &mut Response,
+        dav_path: &str,
+    ) -> BoxResult<()> {
+        // get and check headers.
+        let overwrite = req.headers().typed_get::<Overwrite>().map_or(true, |o| o.0);
+        let depth = match req.headers().typed_get::<Depth>() {
+            Some(Depth::Infinity) | None => Depth::Infinity,
+            Some(Depth::Zero) if method.as_str() == "COPY" => Depth::Zero,
+            _ => {
+                *res.status_mut() = StatusCode::BAD_REQUEST;
+                return Ok(());
+            }
+        };
+
+        // decode and validate destination.
+        let dest = match self.extract_dest(req.headers(), dav_path) {
+            Some(dest) => dest,
+            None => {
+                *res.status_mut() = StatusCode::FORBIDDEN;
+                return Ok(());
+            }
+        };
+
+        // for the destination, check if it's a symlink. If we are going
+        // to remove it first, we want to remove the link, not what it points to.
+        let (dest_is_file, dmeta) = match fs::symlink_metadata(&dest).await {
+            Ok(meta) => {
+                let mut is_file = false;
+                if meta.is_symlink() {
+                    if let Ok(m) = fs::metadata(&dest).await {
+                        is_file = m.is_file();
+                    }
+                }
+                if meta.is_file() {
+                    is_file = true;
+                }
+                (is_file, Ok(meta))
+            }
+            Err(e) => (false, Err(e)),
+        };
+
+        // check if overwrite is "F"
+        let exists = dmeta.is_ok();
+
+        // Fail if collection parent does not exist
+        if dest.parent().is_none() || !dest.parent().unwrap().exists() {
+            *res.status_mut() = StatusCode::CONFLICT;
+            return Ok(());
+        }
+
+        if !overwrite && exists {
+            *res.status_mut() = StatusCode::PRECONDITION_FAILED;
+            return Ok(());
+        }
+
+        // check if source == dest
+        if path == dest {
+            *res.status_mut() = StatusCode::FORBIDDEN;
+            return Ok(());
+        }
+
+        // see if we need to delete the destination first.
+        if path.is_dir() && overwrite && exists && depth != Depth::Zero && !dest_is_file {
+            if fs::remove_dir_all(&dest).await.is_err() {
+                *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                return Ok(());
+            }
+        }
+
+        // COPY or MOVE.
+        if method.as_str() == "COPY" {
+            self.do_copy(&path, &dest, &dest, !dest_is_file, depth)
+                .await?;
+            if overwrite && exists {
+                *res.status_mut() = StatusCode::NO_CONTENT;
+            } else {
+                *res.status_mut() = StatusCode::CREATED;
+            }
+        } else {
+            fs::rename(path, &dest).await?;
+            *res.status_mut() = StatusCode::CREATED;
+        }
+        Ok(())
+    }
+
+    fn do_copy<'a>(
+        &'a self,
+        source: &'a Path,
+        topdest: &'a Path,
+        dest: &'a Path,
+        dest_is_dir: bool,
+        depth: Depth,
+    ) -> BoxFuture<'a, Result<(), std::io::Error>> {
+        async move {
+            // when doing "COPY /a/b /a/b/c make sure we don't recursively
+            // copy /a/b/c/ into /a/b/c.
+            if source == topdest {
+                return Ok(());
+            }
+
+            // source must exist.
+            let meta = match fs::metadata(source).await {
+                Err(e) => return Err(e),
+                Ok(m) => m,
+            };
+
+            // create dest if directory
+            if dest_is_dir {
+                fs::create_dir(dest).await.ok();
+            }
+
+            // if it's a file we can overwrite it.
+            if meta.is_file() {
+                if dest_is_dir {
+                    let destfile = dest.join(source.file_name().ok_or(Error::new(
+                        io::ErrorKind::Other,
+                        "could not extract file name",
+                    ))?);
+                    return match fs::copy(source, destfile).await {
+                        Ok(_) => Ok(()),
+                        Err(e) => {
+                            debug!("do_copy: fs::copy error: {:?}", e);
+                            Err(e)
+                        }
+                    };
+                } else {
+                    return match fs::copy(source, dest).await {
+                        Ok(_) => Ok(()),
+                        Err(e) => {
+                            debug!("do_copy: fs::copy error: {:?}", e);
+                            Err(e)
+                        }
+                    };
+                }
+            }
+
+            // only recurse when Depth > 0.
+            if depth == Depth::Zero {
+                return Ok(());
+            }
+
+            let mut entries = match fs::read_dir(source).await {
+                Ok(entries) => entries,
+                Err(e) => {
+                    debug!("do_copy: fs::read_dir error: {:?}", e);
+                    return Err(e);
+                }
+            };
+
+            let mut retval = Ok(());
+            while let Some(dirent) = entries.next_entry().await? {
+                // NOTE: dirent.metadata() behaves like symlink_metadata()
+                let meta = match dirent.metadata().await {
+                    Ok(meta) => meta,
+                    Err(e) => return Err(e),
+                };
+                let name = dirent.file_name();
+                let nsrc = source.clone().join(&name);
+                let ndest = dest.clone().join(&name);
+
+                // recurse
+                if let Err(e) = self
+                    .do_copy(&nsrc, topdest, &ndest, meta.is_dir(), depth)
+                    .await
+                {
+                    retval = Err(e);
+                }
+            }
+
+            retval
+        }
+        .boxed()
     }
 }
 

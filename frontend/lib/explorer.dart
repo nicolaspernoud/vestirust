@@ -127,6 +127,14 @@ class _ExplorerState extends State<Explorer> {
                       _copyMoveStatus = CopyMoveStatus.copy;
                       _copyMovePath = file.path!;
                     });
+                  })),
+              IconButton(
+                  icon: const Icon(Icons.delete),
+                  onPressed: (() {
+                    client.removeAll(file.path!);
+                    setState(() {
+                      _getData();
+                    });
                   }))
             ]),
             onTap: () {
