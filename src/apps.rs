@@ -1,7 +1,7 @@
 use axum::extract::{ConnectInfo, Path};
 use axum::http::{Request, Response};
 use axum::response::IntoResponse;
-use axum::Json;
+use axum::{Extension, Json};
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -12,7 +12,7 @@ type Client = hyper::client::Client<HttpConnector, Body>;
 use hyper::client::connect::dns::GaiResolver;
 use hyper_reverse_proxy::ReverseProxy;
 
-use crate::configuration::{Config, HostType};
+use crate::configuration::{Config, ConfigFile, HostType};
 use crate::users::User;
 use crate::users::{check_authorization, Admin};
 
@@ -91,6 +91,7 @@ pub async fn get_apps(
 }
 
 pub async fn delete_app(
+    config_file: Extension<ConfigFile>,
     mut config: Config,
     _admin: Admin,
     Path(app_id): Path<(String, usize)>,
@@ -104,13 +105,15 @@ pub async fn delete_app(
         return Err((StatusCode::BAD_REQUEST, "app doesn't exist"));
     }
 
-    config.to_file_or_internal_server_error().await?;
+    config
+        .to_file_or_internal_server_error(&config_file)
+        .await?;
 
     Ok((StatusCode::OK, "app deleted successfully"))
 }
 
-#[axum_macros::debug_handler]
 pub async fn add_app(
+    config_file: Extension<ConfigFile>,
     mut config: Config,
     _admin: Admin,
     Json(payload): Json<App>,
@@ -122,7 +125,9 @@ pub async fn add_app(
         config.apps.push(payload);
     }
 
-    config.to_file_or_internal_server_error().await?;
+    config
+        .to_file_or_internal_server_error(&config_file)
+        .await?;
 
     Ok((StatusCode::CREATED, "app created or updated successfully"))
 }

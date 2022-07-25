@@ -11,7 +11,7 @@ use tower::{ServiceBuilder, ServiceExt};
 
 use crate::{
     apps::{add_app, delete_app, get_apps, proxy_handler},
-    configuration::{load_config, HostType},
+    configuration::{load_config, ConfigFile, HostType},
     davs::{
         model::{add_dav, delete_dav, get_davs},
         webdav_handler,
@@ -29,6 +29,7 @@ impl Server {
         let config = load_config(config_file).await?;
 
         let key = Key::generate();
+        let config_file: ConfigFile = config_file.to_owned();
 
         async fn website_handler() -> Html<String> {
             Html(format!("Hello world from main server !"))
@@ -73,25 +74,26 @@ impl Server {
             .layer(
                 ServiceBuilder::new()
                     .layer(Extension(key))
-                    .layer(Extension(config.1)), /*.layer(
-                                                     CorsLayer::new()
-                                                         .allow_origin(config.0.hostname.parse::<HeaderValue>().unwrap())
-                                                         .allow_headers([
-                                                             ACCEPT,
-                                                             ACCEPT_ENCODING,
-                                                             AUTHORIZATION,
-                                                             CONTENT_LENGTH,
-                                                             COOKIE,
-                                                         ])
-                                                         .allow_methods([
-                                                             Method::POST,
-                                                             Method::GET,
-                                                             Method::OPTIONS,
-                                                             Method::PUT,
-                                                             Method::DELETE,
-                                                         ])
-                                                         .allow_credentials(true),
-                                                 ),*/
+                    .layer(Extension(config.1))
+                    .layer(Extension(config_file)), /*.layer(
+                                                        CorsLayer::new()
+                                                            .allow_origin(config.0.hostname.parse::<HeaderValue>().unwrap())
+                                                            .allow_headers([
+                                                                ACCEPT,
+                                                                ACCEPT_ENCODING,
+                                                                AUTHORIZATION,
+                                                                CONTENT_LENGTH,
+                                                                COOKIE,
+                                                            ])
+                                                            .allow_methods([
+                                                                Method::POST,
+                                                                Method::GET,
+                                                                Method::OPTIONS,
+                                                                Method::PUT,
+                                                                Method::DELETE,
+                                                            ])
+                                                            .allow_credentials(true),
+                                                    ),*/
             );
 
         Ok(Server {

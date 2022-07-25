@@ -184,12 +184,12 @@ pub async fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2
     let users = vec![
         User {
             login: "admin".to_owned(),
-            password: "password".to_owned(),
+            password: "$argon2id$v=19$m=4096,t=3,p=1$QWsdpHrjCaPwy3IODegzNA$dqyioLh9ndJ3V7OoKpkCaczJmGNKjuG99F5hisd3bPs".to_owned(),
             roles: vec!["ADMINS".to_owned()],
         },
         User {
             login: "user".to_owned(),
-            password: "password".to_owned(),
+            password: "$argon2id$v=19$m=4096,t=3,p=1$ZH9ZFCT6YjYQpxkNt3SQgQ$g3DQawMEWlU1rnMAserFAzUg3Lg2O80s8eH+PrvmUo0".to_owned(),
             roles: vec!["USERS".to_owned()],
         },
     ];

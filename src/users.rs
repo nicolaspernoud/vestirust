@@ -4,6 +4,7 @@ use argon2::PasswordHash;
 use argon2::PasswordHasher;
 use argon2::PasswordVerifier;
 use axum::async_trait;
+use axum::Extension;
 use axum::Json;
 
 use axum::extract::FromRequest;
@@ -23,6 +24,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::configuration::Config;
+use crate::configuration::ConfigFile;
 use crate::configuration::HostType;
 
 static COOKIE_NAME: &str = "VESTIBULE_AUTH";
@@ -83,7 +85,6 @@ pub struct LocalAuth {
     password: String,
 }
 
-#[axum_macros::debug_handler]
 pub async fn local_auth(
     jar: SignedCookieJar,
     mut config: Config,
@@ -143,6 +144,7 @@ pub async fn get_users(
 }
 
 pub async fn delete_user(
+    config_file: Extension<ConfigFile>,
     mut config: Config,
     _admin: Admin,
     Path(user_login): Path<(String, String)>,
@@ -156,12 +158,15 @@ pub async fn delete_user(
         return Err((StatusCode::BAD_REQUEST, "user doesn't exist"));
     }
 
-    config.to_file_or_internal_server_error().await?;
+    config
+        .to_file_or_internal_server_error(&config_file)
+        .await?;
 
     Ok((StatusCode::OK, "user deleted successfully"))
 }
 
 pub async fn add_user(
+    config_file: Extension<ConfigFile>,
     mut config: Config,
     _admin: Admin,
     Json(mut payload): Json<User>,
@@ -186,7 +191,9 @@ pub async fn add_user(
         config.users.push(payload);
     }
 
-    config.to_file_or_internal_server_error().await?;
+    config
+        .to_file_or_internal_server_error(&config_file)
+        .await?;
 
     Ok((StatusCode::CREATED, "user created or updated successfully"))
 }

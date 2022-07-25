@@ -18,8 +18,6 @@ use crate::davs::model::Dav;
 use crate::users::User;
 use sha2::{Digest, Sha256};
 
-pub const CONFIG_FILE: &'static str = "vestibule.yaml";
-
 fn debug_mode() -> bool {
     false
 }
@@ -54,6 +52,8 @@ pub struct Config {
 
 pub type ConfigMap = HashMap<String, HostType>;
 
+pub type ConfigFile = String;
+
 impl Config {
     pub async fn from_file(filepath: &str) -> Result<Self> {
         let data = tokio::fs::read_to_string(filepath).await?;
@@ -67,8 +67,11 @@ impl Config {
         Ok(())
     }
 
-    pub async fn to_file_or_internal_server_error(self) -> Result<(), (StatusCode, &'static str)> {
-        self.to_file(CONFIG_FILE).await.map_err(|_| {
+    pub async fn to_file_or_internal_server_error(
+        self,
+        filepath: &str,
+    ) -> Result<(), (StatusCode, &'static str)> {
+        self.to_file(filepath).await.map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "could not save configuration",
@@ -84,9 +87,12 @@ where
     B: Send,
 {
     type Rejection = StatusCode;
-    async fn from_request(_req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
+    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
+        let Extension(config_file) = Extension::<ConfigFile>::from_request(req)
+            .await
+            .expect("`Config file` extension is missing");
         // Load configuration
-        let config = Config::from_file(CONFIG_FILE)
+        let config = Config::from_file(&config_file)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         Ok(config)

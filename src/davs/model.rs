@@ -1,11 +1,13 @@
 use axum::extract::Path;
 use axum::response::IntoResponse;
+use axum::Extension;
 use axum::Json;
 use hyper::StatusCode;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::configuration::Config;
+use crate::configuration::ConfigFile;
 use crate::users::Admin;
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -41,6 +43,7 @@ pub async fn get_davs(
 }
 
 pub async fn delete_dav(
+    config_file: Extension<ConfigFile>,
     mut config: Config,
     _admin: Admin,
     Path(dav_id): Path<(String, usize)>,
@@ -54,12 +57,15 @@ pub async fn delete_dav(
         return Err((StatusCode::BAD_REQUEST, "dav doesn't exist"));
     }
 
-    config.to_file_or_internal_server_error().await?;
+    config
+        .to_file_or_internal_server_error(&config_file)
+        .await?;
 
     Ok((StatusCode::OK, "dav deleted successfully"))
 }
 
 pub async fn add_dav(
+    config_file: Extension<ConfigFile>,
     mut config: Config,
     _admin: Admin,
     Json(payload): Json<Dav>,
@@ -71,7 +77,9 @@ pub async fn add_dav(
         config.davs.push(payload);
     }
 
-    config.to_file_or_internal_server_error().await?;
+    config
+        .to_file_or_internal_server_error(&config_file)
+        .await?;
 
     Ok((StatusCode::CREATED, "dav created or updated successfully"))
 }
