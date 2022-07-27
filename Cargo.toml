@@ -26,6 +26,12 @@ futures-util = "0.3"
 headers = "0.3"
 hyper = { version = "0.14", features = ["client"] }
 hyper-reverse-proxy = { git = "https://github.com/felipenoris/hyper-reverse-proxy", branch = "master" }
+hyper-trust-dns = { version = "0.4", default-features = false, features = [
+  "rustls-http2",
+  "dnssec-ring",
+  "dns-over-https-rustls",
+  "rustls-webpki",
+] }
 lazy_static = "1.4.0"
 log = "0.4"
 mime_guess = "2.0"

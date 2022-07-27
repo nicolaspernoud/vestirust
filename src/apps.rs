@@ -1,16 +1,21 @@
 use axum::extract::{ConnectInfo, Path};
+use axum::http::uri::{Authority, Scheme};
 use axum::http::{Request, Response};
 use axum::response::IntoResponse;
 use axum::{Extension, Json};
+use headers::HeaderValue;
+use hyper::header::{HOST, LOCATION};
+use hyper::Uri;
+use hyper_trust_dns::RustlsHttpsConnector;
+use hyper_trust_dns::TrustDnsResolver;
+use log::error;
 use serde::Deserialize;
 use serde::Serialize;
 
-use hyper::{client::HttpConnector, Body, StatusCode, Version};
+use hyper::{Body, StatusCode};
 
-use std::net::SocketAddr;
-type Client = hyper::client::Client<HttpConnector, Body>;
-use hyper::client::connect::dns::GaiResolver;
 use hyper_reverse_proxy::ReverseProxy;
+use std::net::SocketAddr;
 
 use crate::configuration::{Config, ConfigFile, HostType};
 use crate::users::User;
@@ -32,10 +37,68 @@ pub struct App {
     pub roles: Vec<String>,
 }
 
+#[derive(PartialEq, Debug, Clone)]
+pub struct AppWithUri {
+    pub inner: App,
+    pub app_scheme: Scheme,
+    pub app_authority: Authority,
+    pub forward_uri: Uri,
+    pub forward_scheme: Scheme,
+    pub forward_authority: Authority,
+    pub forward_host: String,
+}
+
+impl AppWithUri {
+    pub fn from_app_domain_and_http_port(inner: App, domain: &str, port: Option<u16>) -> Self {
+        let app_scheme = if port.is_some() {
+            Scheme::HTTP
+        } else {
+            Scheme::HTTPS
+        };
+        let app_authority = if let Some(port) = port {
+            format!("{}.{}:{}", inner.host, domain, port)
+                .parse()
+                .expect("could not work out authority from app configuration")
+        } else {
+            format!("{}.{}", inner.host, domain)
+                .parse()
+                .expect("could not work out authority from app configuration")
+        };
+        let forward_scheme = if inner.forward_to.starts_with("https://") {
+            Scheme::HTTPS
+        } else {
+            Scheme::HTTP
+        };
+        let forward_uri: Uri = inner
+            .forward_to
+            .parse()
+            .expect("could not parse app target service");
+        let mut forward_parts = forward_uri.into_parts();
+        let forward_authority = forward_parts
+            .authority
+            .clone()
+            .expect("could not parse app target service host");
+
+        let forward_host = forward_authority.host().to_owned();
+        forward_parts.scheme = Some(forward_scheme.clone());
+        forward_parts.path_and_query = Some("/".parse().unwrap());
+        let forward_uri = Uri::from_parts(forward_parts).unwrap();
+        Self {
+            inner,
+            app_scheme,
+            app_authority,
+            forward_uri,
+            forward_scheme,
+            forward_authority,
+            forward_host,
+        }
+    }
+}
+
 lazy_static::lazy_static! {
-    static ref  PROXY_CLIENT: ReverseProxy<HttpConnector<GaiResolver>> = {
+    static ref  PROXY_CLIENT: ReverseProxy<RustlsHttpsConnector> = {
         ReverseProxy::new(
-            Client::new()
+            hyper::Client::builder().build::<_, hyper::Body>(TrustDnsResolver::default().into_rustls_webpki_https_connector()),
         )
     };
 }
@@ -46,8 +109,6 @@ pub async fn proxy_handler(
     app: HostType,
     mut req: Request<Body>,
 ) -> Response<Body> {
-    *Request::version_mut(&mut req) = Version::HTTP_11;
-
     if let Some(value) = check_authorization(&app, &user) {
         return value;
     }
@@ -57,17 +118,66 @@ pub async fn proxy_handler(
         _ => panic!("Service is not an app !"),
     };
 
+    // Alter request
+    let uri = req.uri_mut();
+    let mut parts = uri.clone().into_parts();
+    parts.scheme = Some(app.forward_scheme);
+    if let Some(port) = &app.forward_authority.port() {
+        parts.authority = Some(format!("{}:{}", app.forward_host, port).parse().unwrap());
+    } else {
+        parts.authority = Some(app.forward_host.parse().unwrap());
+    }
+
+    *uri = Uri::from_parts(parts).unwrap();
+
+    // If the target service contains no port, is to an external service and we need to rewrite the host header to fool the target site
+    if app.forward_authority.port().is_none() {
+        req.headers_mut().insert(
+            HOST,
+            HeaderValue::from_str(&app.forward_authority.to_string()).unwrap(),
+        );
+    }
+
+    // TODO : If the app contains basic auth information, forge a basic auth header
+
     match PROXY_CLIENT
-        .call(
-            addr.ip(),
-            format!("http://{}", app.forward_to).as_str(),
-            req,
-        )
+        .call(addr.ip(), &app.forward_uri.to_string(), req)
         .await
     {
-        Ok(response) => response,
-        Err(_error) => {
-            eprint!("_error: {:?}", _error);
+        Ok(mut response) => {
+            // If the response contains a location, alter the redirect location if the redirection is relative to the proxied host
+
+            if let Some(location) = response.headers().get("location") {
+                // parse location as an url
+                let location_uri: Uri = match location.to_str().unwrap().parse() {
+                    Ok(uri) => uri,
+                    Err(e) => {
+                        error!("Proxy uri parse error : {:?}", e);
+                        return Response::builder()
+                            .status(StatusCode::INTERNAL_SERVER_ERROR)
+                            .body(Body::empty())
+                            .unwrap();
+                    }
+                };
+                // test if the host of this url contains the target service host
+                if location_uri.host().is_some()
+                    && location_uri.host().unwrap().contains(&app.forward_host)
+                {
+                    // if so, replace the target service host with the front service host
+                    let mut parts = location_uri.into_parts();
+                    parts.scheme = Some(app.app_scheme);
+                    parts.authority = Some(app.app_authority);
+                    let uri = Uri::from_parts(parts).unwrap();
+
+                    response
+                        .headers_mut()
+                        .insert(LOCATION, HeaderValue::from_str(&uri.to_string()).unwrap());
+                }
+            }
+            response
+        }
+        Err(e) => {
+            error!("Proxy error: {:?}", e);
             Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body(Body::empty())

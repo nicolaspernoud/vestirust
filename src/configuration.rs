@@ -14,6 +14,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::apps::App;
+use crate::apps::AppWithUri;
 use crate::davs::model::Dav;
 use crate::users::User;
 use sha2::{Digest, Sha256};
@@ -105,9 +106,18 @@ pub async fn load_config(config_file: &str) -> Result<(Config, Arc<ConfigMap>), 
         .apps
         .iter()
         .map(|app| {
+            let port = if config.auto_tls {
+                None
+            } else {
+                Some(config.http_port)
+            };
             (
                 format!("{}.{}", app.host.to_owned(), config.hostname),
-                HostType::App(app.clone()),
+                HostType::App(AppWithUri::from_app_domain_and_http_port(
+                    app.clone(),
+                    &config.hostname,
+                    port,
+                )),
             )
         })
         .chain(config.davs.iter().map(|dav| {
@@ -129,21 +139,21 @@ pub async fn load_config(config_file: &str) -> Result<(Config, Arc<ConfigMap>), 
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum HostType {
-    App(App),
+    App(AppWithUri),
     Dav(Dav),
 }
 
 impl HostType {
     pub fn roles(&self) -> &Vec<String> {
         match self {
-            HostType::App(app) => &app.roles,
+            HostType::App(app) => &app.inner.roles,
             HostType::Dav(dav) => &dav.roles,
         }
     }
 
     pub fn secured(&self) -> bool {
         match self {
-            HostType::App(app) => app.secured,
+            HostType::App(app) => app.inner.secured,
             HostType::Dav(dav) => dav.secured,
         }
     }

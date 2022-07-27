@@ -240,7 +240,7 @@ pub fn check_authorization(app: &HostType, user: &Option<User>) -> Option<Respon
 #[cfg(test)]
 mod check_user_has_role_or_forbid_tests {
     use crate::{
-        apps::App,
+        apps::{App, AppWithUri},
         configuration::HostType,
         users::{check_user_has_role_or_forbid, User},
     };
@@ -249,7 +249,9 @@ mod check_user_has_role_or_forbid_tests {
     fn test_no_user() {
         let user = &None;
         let mut app: App = App::default();
+        app.forward_to = "www.example.com".to_string(); // to prevent failing when parsing url
         app.roles = vec!["role1".to_string(), "role2".to_string()];
+        let app = AppWithUri::from_app_domain_and_http_port(app, "vestibule.io", None);
         let target = HostType::App(app);
         assert!(check_user_has_role_or_forbid(user, &target).is_some());
     }
@@ -259,7 +261,9 @@ mod check_user_has_role_or_forbid_tests {
         let mut user = User::default();
         user.roles = vec!["role1".to_string(), "role2".to_string()];
         let mut app: App = App::default();
+        app.forward_to = "www.example.com".to_string(); // to prevent failing when parsing url
         app.roles = vec!["role1".to_string(), "role2".to_string()];
+        let app = AppWithUri::from_app_domain_and_http_port(app, "vestibule.io", None);
         let target = HostType::App(app);
         assert!(check_user_has_role_or_forbid(&Some(user), &target).is_none());
     }
@@ -269,7 +273,9 @@ mod check_user_has_role_or_forbid_tests {
         let mut user = User::default();
         user.roles = vec!["role1".to_string()];
         let mut app: App = App::default();
+        app.forward_to = "www.example.com".to_string(); // to prevent failing when parsing url
         app.roles = vec!["role1".to_string(), "role2".to_string()];
+        let app = AppWithUri::from_app_domain_and_http_port(app, "vestibule.io", None);
         let target = HostType::App(app);
         assert!(check_user_has_role_or_forbid(&Some(user), &target).is_none());
     }
@@ -279,7 +285,9 @@ mod check_user_has_role_or_forbid_tests {
         let mut user = User::default();
         user.roles = vec!["role3".to_string(), "role4".to_string()];
         let mut app: App = App::default();
+        app.forward_to = "www.example.com".to_string(); // to prevent failing when parsing url
         app.roles = vec!["role1".to_string(), "role2".to_string()];
+        let app = AppWithUri::from_app_domain_and_http_port(app, "vestibule.io", None);
         let target = HostType::App(app);
         assert!(check_user_has_role_or_forbid(&Some(user), &target).is_some());
     }
@@ -288,7 +296,9 @@ mod check_user_has_role_or_forbid_tests {
     fn test_user_roles_are_empty() {
         let user = User::default();
         let mut app: App = App::default();
+        app.forward_to = "www.example.com".to_string(); // to prevent failing when parsing url
         app.roles = vec!["role1".to_string(), "role2".to_string()];
+        let app = AppWithUri::from_app_domain_and_http_port(app, "vestibule.io", None);
         let target = HostType::App(app);
         assert!(check_user_has_role_or_forbid(&Some(user), &target).is_some());
     }
@@ -297,7 +307,9 @@ mod check_user_has_role_or_forbid_tests {
     fn test_allowed_roles_are_empty() {
         let mut user = User::default();
         user.roles = vec!["role1".to_string(), "role2".to_string()];
-        let app: App = App::default();
+        let mut app: App = App::default();
+        app.forward_to = "www.example.com".to_string(); // to prevent failing when parsing url
+        let app = AppWithUri::from_app_domain_and_http_port(app, "vestibule.io", None);
         let target = HostType::App(app);
         assert!(check_user_has_role_or_forbid(&Some(user), &target).is_some());
     }
@@ -305,7 +317,9 @@ mod check_user_has_role_or_forbid_tests {
     #[test]
     fn test_all_roles_are_empty() {
         let user = User::default();
-        let app: App = App::default();
+        let mut app: App = App::default();
+        app.forward_to = "www.example.com".to_string(); // to prevent failing when parsing url
+        let app = AppWithUri::from_app_domain_and_http_port(app, "vestibule.io", None);
         let target = HostType::App(app);
         assert!(check_user_has_role_or_forbid(&Some(user), &target).is_some());
     }

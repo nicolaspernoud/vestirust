@@ -4,7 +4,7 @@
 
 ## TODO
 
-- [ ] Fix: http2 downgrade
+- [ ] Reverse proxy unit tests
 - [ ] Feat: static html
 
 - [/] User authentication and security (local accounts)
@@ -20,8 +20,6 @@
 
 - [/] Webdav file server
 - [ ] Use X-OC-Mtime header to alter modtime on PUT requests (nextcloud/owncloud style)
-- [ ] Check that trying to PUT/MOVE/COPY on existing file/dir gives an error
-- [ ] Fix copying dir on existing dir
 
 - [ ] Error handling
 - [ ] Remove clones, panics, expects, unwraps, println!, etc.
