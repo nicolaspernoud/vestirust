@@ -899,3 +899,62 @@ async fn allow_symlinks() -> Result<()> {
     assert_eq!(resp.status(), 200);
     Ok(())
 }
+
+#[tokio::test]
+async fn secured_dav_test() {
+    // Arrange
+    let app = TestApp::spawn().await;
+
+    // Act : try to access app as unlogged user
+    let response = app
+        .client
+        .get(format!("http://secured-files.vestibule.io:{}", app.port))
+        .send()
+        .await
+        .expect("failed to execute request");
+
+    // Assert that is impossible
+    assert!(response.status() == 403);
+    assert_eq!(response.text().await.unwrap(), "");
+
+    // Log as normal user
+    let response = app
+        .client
+        .post(format!("http://vestibule.io:{}/auth/local", app.port))
+        .body(r#"{"login":"user","password":"password"}"#)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .expect("failed to execute request");
+    assert!(response.status().is_success());
+    // Act : try to access app as logged user
+    let response = app
+        .client
+        .get(format!("http://secured-files.vestibule.io:{}", app.port))
+        .send()
+        .await
+        .expect("failed to execute request");
+    // Assert that is impossible
+    assert!(response.status() == 403);
+    assert_eq!(response.text().await.unwrap(), "");
+
+    // Log as admin
+    let response = app
+        .client
+        .post(format!("http://vestibule.io:{}/auth/local", app.port))
+        .body(r#"{"login":"admin","password":"password"}"#)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .expect("failed to execute request");
+    assert!(response.status().is_success());
+    // Act : try to access app as admin
+    let response = app
+        .client
+        .get(format!("http://secured-files.vestibule.io:{}", app.port))
+        .send()
+        .await
+        .expect("failed to execute request");
+    // Assert that is possible
+    assert!(response.status().is_success());
+}

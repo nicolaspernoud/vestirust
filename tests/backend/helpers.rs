@@ -76,9 +76,14 @@ impl TestApp {
             .resolve("app1.vestibule.io", main_addr)
             .resolve("app2.vestibule.io", main_addr)
             .resolve("app2-altered.vestibule.io", main_addr)
+            .resolve("secured-app.vestibule.io", main_addr)
             .resolve("files1.vestibule.io", main_addr)
             .resolve("files2.vestibule.io", main_addr)
             .resolve("files3.vestibule.io", main_addr)
+            .resolve("secured-files.vestibule.io", main_addr)
+            .resolve("fwdtoredirect.vestibule.io", main_addr)
+            .resolve("relativeredirect.vestibule.io", main_addr)
+            .resolve("absoluteredirect.vestibule.io", main_addr)
             .cookie_store(true)
             .build()
             .unwrap();
@@ -134,6 +139,20 @@ pub async fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2
             openpath: "/javascript_simple.html".to_owned(),
             roles: vec!["ADMINS".to_owned()],
         },
+        App {
+            id: 3,
+            name: "Secured App".to_owned(),
+            icon: "app_2_icon".to_owned(),
+            color: "#020202".to_owned(),
+            is_proxy: false,
+            host: "secured-app".to_owned(),
+            forward_to: format!("localhost:{mock2_port}"),
+            secured: true,
+            login: "".to_owned(),
+            password: "".to_owned(),
+            openpath: "".to_owned(),
+            roles: vec!["ADMINS".to_owned()],
+        },
     ];
 
     let davs = vec![
@@ -176,6 +195,20 @@ pub async fn create_apps_file(id: &str, main_port: &u16, mock1_port: &u16, mock2
             secured: false,
             allow_symlinks: true,
             roles: vec!["ADMINS".to_owned(), "USERS".to_owned()],
+            passphrase: "".to_owned(),
+            key: None,
+        },
+        Dav {
+            id: 4,
+            host: "secured-files".to_owned(),
+            directory: format!("./data/{id}/dir3"),
+            writable: false,
+            name: "Secured Files".to_owned(),
+            icon: "file-invoice".to_owned(),
+            color: "#2ce027".to_owned(),
+            secured: true,
+            allow_symlinks: true,
+            roles: vec!["ADMINS".to_owned()],
             passphrase: "".to_owned(),
             key: None,
         },
