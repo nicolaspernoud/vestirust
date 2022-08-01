@@ -21,7 +21,13 @@
 - [/] Webdav file server
 - [ ] Use X-OC-Mtime header to alter modtime on PUT requests (nextcloud/owncloud style)
 
+- [ ] Security : inject security headers (CSP, etc)
+- [ ] Security : CSRF protection
+- [ ] Security : harden cookie (HTTP Only, Secure, etc.)
+
 - [ ] Error handling
 - [ ] Remove clones, panics, expects, unwraps, println!, etc.
 - [ ] Tests
+- [ ] Lifetimes for non serialized structs
 - [ ] Litmus compliance in CI tests
+- [ ] Remove axum macros

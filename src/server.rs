@@ -16,7 +16,7 @@ use crate::{
         model::{add_dav, delete_dav, get_davs},
         webdav_handler,
     },
-    users::{add_user, delete_user, get_users, local_auth},
+    users::{add_user, delete_user, get_users, list_services, local_auth},
 };
 
 pub struct Server {
@@ -34,6 +34,8 @@ impl Server {
         async fn website_handler() -> Html<String> {
             Html(format!("Hello world from main server !"))
         }
+
+        let user_router = Router::new().route("/list_services", get(list_services));
 
         let admin_router = Router::new()
             .route("/users", get(get_users).post(add_user))
@@ -53,6 +55,7 @@ impl Server {
             )
             .route("/auth/local", post(local_auth))
             .nest("/api/admin", admin_router)
+            .nest("/api/user", user_router)
             .route("/", any(website_handler));
 
         let proxy_router = Router::new().route("/*path", any(proxy_handler));

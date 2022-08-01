@@ -23,9 +23,12 @@ use rand::rngs::OsRng;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::apps::App;
 use crate::configuration::Config;
 use crate::configuration::ConfigFile;
+use crate::configuration::ConfigMap;
 use crate::configuration::HostType;
+use crate::davs::model::Dav;
 
 static COOKIE_NAME: &str = "VESTIBULE_AUTH";
 
@@ -196,6 +199,47 @@ pub async fn add_user(
         .await?;
 
     Ok((StatusCode::CREATED, "user created or updated successfully"))
+}
+
+fn strip_sensitive_data_and_push_to_vec(h: &HostType, apps: &mut Vec<App>, davs: &mut Vec<Dav>) {
+    match h {
+        HostType::App(s) => {
+            let mut s = s.inner.clone();
+            s.login = "REDACTED".to_owned();
+            s.password = "REDACTED".to_owned();
+            apps.push(s);
+        }
+        HostType::Dav(s) => {
+            let mut s = s.clone();
+            s.passphrase = "REDACTED".to_owned();
+            davs.push(s);
+        }
+    }
+}
+
+#[axum_macros::debug_handler]
+pub async fn list_services(
+    config_map: Extension<std::sync::Arc<ConfigMap>>,
+    user: User,
+) -> Json<(Vec<App>, Vec<Dav>)> {
+    let mut apps = Vec::new();
+    let mut davs = Vec::new();
+
+    for svc in config_map.iter() {
+        if !svc.1.secured() {
+            strip_sensitive_data_and_push_to_vec(svc.1, &mut apps, &mut davs);
+        } else {
+            'svc_loop: for svc_role in svc.1.roles() {
+                for user_role in user.roles.iter() {
+                    if user_role == svc_role {
+                        strip_sensitive_data_and_push_to_vec(svc.1, &mut apps, &mut davs);
+                        break 'svc_loop;
+                    }
+                }
+            }
+        }
+    }
+    Json((apps, davs))
 }
 
 fn hash_password(payload: &mut User) -> Result<(), argon2::password_hash::Error> {
